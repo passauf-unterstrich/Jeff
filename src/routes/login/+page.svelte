@@ -123,12 +123,12 @@
 	}
 	.eyebrow {
 		color: var(--quiet);
-		font-size: 9px;
+		font-size: 11px;
 		font-weight: 700;
 		letter-spacing: 0.16em;
 	}
 	h1 {
-		font-size: 45px;
+		font-size: 50px;
 		line-height: 0.98;
 		letter-spacing: -0.055em;
 		font-weight: 540;
@@ -136,7 +136,7 @@
 	}
 	.intro {
 		color: var(--muted);
-		font-size: 13px;
+		font-size: 15px;
 		margin: 0 0 27px;
 	}
 	.modes {
@@ -165,12 +165,12 @@
 		gap: 7px;
 		margin-top: 13px;
 		color: var(--quiet);
-		font-size: 10px;
+		font-size: 12px;
 	}
 	input {
 		width: 100%;
-		min-height: 44px;
-		padding: 0 12px;
+		min-height: 50px;
+		padding: 0 14px;
 	}
 	.submit,
 	a {

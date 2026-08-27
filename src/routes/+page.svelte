@@ -1958,7 +1958,7 @@
 		justify-content: flex-end;
 	}
 	.drawer {
-		width: min(600px, 94vw);
+		width: min(560px, 94vw);
 		height: 100%;
 		overflow: auto;
 		background: #0f120f;
@@ -1992,7 +1992,7 @@
 	}
 	.inventory-tools {
 		display: grid;
-		grid-template-columns: 1fr 150px auto;
+		grid-template-columns: minmax(0, 1fr) 142px auto;
 		gap: 8px;
 		margin: 28px 0 18px;
 	}
@@ -2014,7 +2014,8 @@
 		padding: 10px 4px;
 	}
 	.inventory-tools select {
-		padding: 0 10px;
+		padding: 0 34px 0 12px;
+		font-size: 13px;
 	}
 	.inventory-row {
 		display: grid;
@@ -2048,12 +2049,12 @@
 	}
 	.inventory-copy b {
 		color: var(--text);
-		font-size: 13px;
+		font-size: 15px;
 		font-weight: 540;
 	}
 	.inventory-copy span {
 		color: var(--quiet);
-		font-size: 10px;
+		font-size: 12px;
 		margin-top: 5px;
 	}
 	.quantity-control {
