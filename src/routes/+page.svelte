@@ -233,6 +233,14 @@
 		await persist(async () => {
 			await Promise.all(data!.shoppingItems.map((item) => repository.saveShoppingItem(item)));
 			await repository.checkoutShoppingList(data!.shoppingList.id);
+			const today = new Date().toISOString().slice(0, 10);
+			await repository.createShoppingList({
+				id: crypto.randomUUID(),
+				title: 'Nächster Einkauf',
+				startDate: today,
+				endDate: '',
+				checkedOutAt: null
+			});
 			data = await repository.load(data!.recipe.id);
 		});
 		checkoutReviewOpen = false;

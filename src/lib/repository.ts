@@ -16,6 +16,7 @@ export interface Repository {
 	saveSession(value: CookingSession): Promise<void>;
 	saveNote(value: RecipeNote): Promise<void>;
 	saveShoppingList(value: ShoppingList): Promise<void>;
+	createShoppingList(value: ShoppingList): Promise<void>;
 	saveShoppingItem(value: ShoppingItem): Promise<void>;
 	deleteShoppingItem(id: string): Promise<void>;
 	saveInventoryItem(value: InventoryItem): Promise<void>;
@@ -107,6 +108,11 @@ export class DemoRepository implements Repository {
 	}
 	async saveShoppingList(value: ShoppingList) {
 		this.data.shoppingList = clone(value);
+		this.flush();
+	}
+	async createShoppingList(value: ShoppingList) {
+		this.data.shoppingList = clone(value);
+		this.data.shoppingItems = [];
 		this.flush();
 	}
 	async saveShoppingItem(value: ShoppingItem) {
@@ -665,6 +671,19 @@ export class SupabaseRepository implements Repository {
 						completed_at: v.checkedOutAt
 					})
 					.eq('id', v.id)
+			).error
+		);
+	}
+	async createShoppingList(v: ShoppingList) {
+		check(
+			(
+				await this.client.from('shopping_lists').insert({
+					id: v.id,
+					user_id: this.userId,
+					title: v.title,
+					start_date: v.startDate || null,
+					end_date: v.endDate || null
+				})
 			).error
 		);
 	}
