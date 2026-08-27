@@ -39,6 +39,7 @@
 	let editingShopping = $state<ShoppingItem | null>(null);
 	let summaryOpen = $state(false);
 	let expandedStepId = $state<string | null>(null);
+	let prepCollapsed = $state(false);
 	let editingRecipe = $state<Recipe | null>(null);
 	let authEmail = $state('');
 	const demoMode = !supabaseConfigured();
@@ -53,6 +54,14 @@
 	);
 	const finishedSteps = $derived(data ? Object.values(data.session.stepProgress).filter(Boolean).length : 0);
 	const finishedPrep = $derived(data ? Object.values(data.session.prepProgress).filter(Boolean).length : 0);
+	const openShoppingCount = $derived(data ? data.shoppingItems.filter((item) => !item.isChecked).length : 0);
+	const replenishCount = $derived(
+		data
+			? data.inventory.filter(
+					(item) => item.status === 'wenig' || item.status === 'leer' || item.quantity === 0
+				).length
+			: 0
+	);
 
 	onMount(async () => {
 		try {
@@ -75,6 +84,19 @@
 		}
 	});
 
+	onMount(() => {
+		const closeOverlay = (event: KeyboardEvent) => {
+			if (event.key !== 'Escape') return;
+			inventoryOpen = false;
+			editingInventory = null;
+			editingShopping = null;
+			editingRecipe = null;
+			summaryOpen = false;
+		};
+		window.addEventListener('keydown', closeOverlay);
+		return () => window.removeEventListener('keydown', closeOverlay);
+	});
+
 	async function persist(action: () => Promise<void>) {
 		saveState = 'saving';
 		error = '';
@@ -90,6 +112,7 @@
 	function togglePrep(id: string) {
 		if (!data) return;
 		data.session.prepProgress[id] = !data.session.prepProgress[id];
+		prepCollapsed = data.recipe.prepItems.every((item) => data!.session.prepProgress[item.id]);
 		void persist(() => repository.saveSession(data!.session));
 	}
 	function toggleStep(id: string) {
@@ -111,6 +134,14 @@
 	}
 	function isExpandedStep(id: string, index: number) {
 		return expandedStepId ? expandedStepId === id : isCurrentStep(index);
+	}
+	function instructionParts(instruction: string) {
+		return (
+			instruction
+				.match(/[^.!?]+[.!?]+|[^.!?]+$/g)
+				?.map((part) => part.trim())
+				.filter(Boolean) ?? [instruction]
+		);
 	}
 	function finishCooking() {
 		if (!data) return;
@@ -194,6 +225,7 @@
 	function cycleStatus(item: InventoryItem) {
 		item.status = item.status === 'vorhanden' ? 'wenig' : item.status === 'wenig' ? 'leer' : 'vorhanden';
 		void persist(() => repository.saveInventoryItem(item));
+		if (item.status === 'leer') addInventoryToShopping(item);
 	}
 	function addInventoryToShopping(item: InventoryItem) {
 		if (!data) return;
@@ -287,49 +319,56 @@
 					</div>
 					<textarea
 						class="recipe-title"
-						rows="2"
+						rows="1"
 						aria-label="Gerichtstitel"
 						bind:value={data.recipe.title}
 						onblur={() => persist(() => repository.saveRecipe(data!.recipe))}
 					></textarea>
-					<label class="focus"
-						>Lernfokus <input
-							bind:value={data.recipe.learningFocus}
-							onblur={() => persist(() => repository.saveRecipe(data!.recipe))}
-						/></label
-					>
+					<div class="focus-row">
+						<label class="focus"
+							>Lernfokus <input
+								bind:value={data.recipe.learningFocus}
+								onblur={() => persist(() => repository.saveRecipe(data!.recipe))}
+							/></label
+						>
+						<button
+							class="recipe-edit"
+							aria-label="Rezept bearbeiten"
+							onclick={() => (editingRecipe = clone(data!.recipe))}><Edit3 size={15} /> Bearbeiten</button
+						>
+					</div>
 				</section>
-				<div class="cook-grid">
-					<section class="card prep-card">
+				<div class="cook-grid" class:prep-ready={finishedPrep === data.recipe.prepItems.length}>
+					<section class="card prep-card" class:collapsed={prepCollapsed}>
 						<div class="section-title">
 							<ClipboardCheck size={18} />
 							<h2>Mise en Place</h2>
-							<small>{finishedPrep}/{data.recipe.prepItems.length}</small>
+							<small
+								>{finishedPrep === data.recipe.prepItems.length
+									? 'BEREIT'
+									: `${finishedPrep}/${data.recipe.prepItems.length}`}</small
+							>
 							<button
-								class="section-edit"
-								aria-label="Rezept bearbeiten"
-								onclick={() => (editingRecipe = clone(data!.recipe))}><Edit3 size={15} /></button
+								class="collapse-button"
+								class:collapsed={prepCollapsed}
+								aria-label={prepCollapsed ? 'Mise en Place ausklappen' : 'Mise en Place einklappen'}
+								onclick={() => (prepCollapsed = !prepCollapsed)}><ChevronDown size={17} /></button
 							>
 						</div>
-						<div class="checklist">
-							{#each data.recipe.prepItems as item}<label class:done={data.session.prepProgress[item.id]}
-									><input
-										type="checkbox"
-										checked={data.session.prepProgress[item.id] ?? false}
-										onchange={() => togglePrep(item.id)}
-									/><span class="check"><Check size={15} /></span><span>{item.text}</span></label
-								>{/each}
-						</div>
+						{#if !prepCollapsed}<div class="checklist">
+								{#each data.recipe.prepItems as item}<label class:done={data.session.prepProgress[item.id]}
+										><input
+											type="checkbox"
+											checked={data.session.prepProgress[item.id] ?? false}
+											onchange={() => togglePrep(item.id)}
+										/><span class="check"><Check size={15} /></span><span>{item.text}</span></label
+									>{/each}
+							</div>{/if}
 					</section>
 					<section class="card steps-card">
 						<div class="section-title">
 							<h2>Ablauf</h2>
 							<small>{finishedSteps}/{data.recipe.steps.length} SCHRITTE</small>
-							<button
-								class="section-edit"
-								aria-label="Rezept bearbeiten"
-								onclick={() => (editingRecipe = clone(data!.recipe))}><Edit3 size={15} /></button
-							>
 						</div>
 						{#each data.recipe.steps as step, i}<article
 								class="step"
@@ -341,21 +380,37 @@
 									aria-label={`${step.title} ${data.session.stepProgress[step.id] ? 'wieder öffnen' : 'erledigen'}`}
 									onclick={() => toggleStep(step.id)}
 									>{data.session.stepProgress[step.id] ? '✓' : i + 1}</button
-								><button
-									class="step-copy"
-									aria-expanded={isExpandedStep(step.id, i)}
-									onclick={() => (expandedStepId = isExpandedStep(step.id, i) ? null : step.id)}
-									><b>{step.title}</b>{#if isExpandedStep(step.id, i)}<span class="instruction"
-											>{step.instruction}</span
-										>{/if}<small
-										>{[step.duration, step.temperature, step.goal].filter(Boolean).join(' · ')}</small
-									></button
-								><button
+								>
+								<div class="step-copy">
+									<button
+										class="step-heading"
+										aria-expanded={isExpandedStep(step.id, i)}
+										onclick={() => (expandedStepId = isExpandedStep(step.id, i) ? null : step.id)}
+										><b>{step.title}</b></button
+									>
+									<div class="step-facts">
+										{#if step.duration}<span>{step.duration}</span>{/if}
+										{#if step.temperature}<span>{step.temperature}</span>{/if}
+									</div>
+								</div>
+								<button
 									class="expand-button"
 									aria-label={`${step.title} ${isExpandedStep(step.id, i) ? 'einklappen' : 'ausklappen'}`}
 									onclick={() => (expandedStepId = isExpandedStep(step.id, i) ? null : step.id)}
 									><ChevronDown class="step-chevron" size={17} /></button
 								>
+								{#if isExpandedStep(step.id, i)}
+									<div class="instruction">
+										{#each instructionParts(step.instruction) as sentence, sentenceIndex}<span
+												class="coach-line"><i>{sentenceIndex + 1}</i><span>{sentence}</span></span
+											>{/each}
+										{#if step.goal}<span class="step-goal"><b>Ziel</b>{step.goal}</span>{/if}
+										<button class="complete-step" onclick={() => toggleStep(step.id)}
+											><Check size={17} />
+											{data.session.stepProgress[step.id] ? 'Wieder öffnen' : 'Schritt erledigt'}</button
+										>
+									</div>
+								{/if}
 							</article>{/each}
 					</section>
 				</div>
@@ -380,7 +435,7 @@
 			<main class="shopping">
 				<section class="shopping-hero">
 					<div>
-						<p class="eyebrow">AKTUELLE LISTE</p>
+						<p class="eyebrow">AKTUELLE LISTE · {openShoppingCount} OFFEN</p>
 						<input
 							class="list-title"
 							aria-label="Titel der Einkaufsliste"
@@ -390,14 +445,15 @@
 					</div>
 					<div class="shopping-actions">
 						<button class="quiet-button" onclick={() => (inventoryOpen = true)}
-							><Package size={17} /> Vorrat <span>{data.inventory.length}</span></button
+							><Package size={17} /> Vorrat
+							<span>{replenishCount ? `${replenishCount} knapp` : 'alles da'}</span></button
 						><button class="primary" onclick={() => newShoppingItem()}><Plus size={17} /> Hinzufügen</button>
 					</div>
 				</section>
 				<section class="shopping-card card">
-					{#each SHOPPING_CATEGORIES as category, categoryIndex}{@const items = data.shoppingItems.filter(
-							(item) => item.category === category
-						)}
+					{#each SHOPPING_CATEGORIES as category, categoryIndex}{@const items = data.shoppingItems
+							.filter((item) => item.category === category)
+							.sort((a, b) => Number(a.isChecked) - Number(b.isChecked) || a.position - b.position)}
 						<div class="shopping-group">
 							<div class="group-title">
 								<span>{String(categoryIndex + 1).padStart(2, '0')}</span>
@@ -706,8 +762,12 @@
 		grid-template-columns: 1fr auto 1fr;
 		align-items: center;
 		border-bottom: 1px solid var(--line);
-		position: relative;
-		z-index: 5;
+		position: sticky;
+		top: 0;
+		z-index: 20;
+		background: rgba(9, 11, 10, 0.88);
+		backdrop-filter: blur(20px) saturate(140%);
+		-webkit-backdrop-filter: blur(20px) saturate(140%);
 	}
 	.brand {
 		display: inline-flex;
@@ -868,7 +928,10 @@
 	.recipe-title {
 		display: block;
 		width: 100%;
-		height: 1.08em;
+		height: auto;
+		min-height: 1.08em;
+		max-height: 2.08em;
+		field-sizing: content;
 		overflow: hidden;
 		resize: none;
 		border: 0;
@@ -880,16 +943,27 @@
 		font-weight: 530;
 		color: var(--text);
 	}
+	.focus-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
+		margin-top: 20px;
+	}
 	.focus {
 		display: flex;
+		flex: 1;
+		min-width: 0;
 		align-items: center;
 		gap: 10px;
 		color: var(--quiet);
 		font-size: 12px;
-		margin-top: 23px;
+		margin: 0;
 	}
 	.focus input {
+		min-width: 0;
 		width: min(360px, 70vw);
+		flex: 1;
 		border: 0;
 		border-bottom: 1px solid transparent;
 		border-radius: 0;
@@ -899,6 +973,23 @@
 	}
 	.focus input:focus {
 		border-bottom-color: var(--line-strong);
+	}
+	.recipe-edit {
+		min-height: 36px;
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		padding: 0 10px;
+		border: 0;
+		border-radius: 9px;
+		background: transparent;
+		color: var(--quiet);
+		font-size: 11px;
+		cursor: pointer;
+	}
+	.recipe-edit:hover {
+		background: var(--surface-2);
+		color: var(--text);
 	}
 	.cook-grid {
 		display: grid;
@@ -936,7 +1027,7 @@
 		font-size: 9px;
 		letter-spacing: 0.12em;
 	}
-	.section-edit {
+	.collapse-button {
 		width: 30px;
 		height: 30px;
 		display: grid;
@@ -947,9 +1038,18 @@
 		color: var(--quiet);
 		cursor: pointer;
 	}
-	.section-edit:hover {
+	.collapse-button:hover {
 		background: var(--surface-3);
 		color: var(--text);
+	}
+	.collapse-button :global(svg) {
+		transition: transform 0.18s ease;
+	}
+	.collapse-button.collapsed :global(svg) {
+		transform: rotate(-90deg);
+	}
+	.prep-card.collapsed .section-title {
+		margin-bottom: 0;
 	}
 	.checklist label {
 		display: flex;
@@ -981,8 +1081,8 @@
 		transition: 0.15s;
 	}
 	.check {
-		width: 22px;
-		height: 22px;
+		width: 26px;
+		height: 26px;
 		border-radius: 7px;
 	}
 	.done .check,
@@ -994,14 +1094,14 @@
 	.step {
 		width: 100%;
 		display: grid;
-		grid-template-columns: 34px 1fr auto;
+		grid-template-columns: 44px minmax(0, 1fr) 40px;
 		gap: 12px;
 		align-items: start;
 		text-align: left;
 		border-top: 1px solid var(--line);
 		background: transparent;
 		min-height: 69px;
-		padding: 18px 7px;
+		padding: 18px 4px;
 		color: var(--muted);
 	}
 	.step.current {
@@ -1013,18 +1113,25 @@
 		opacity: 0.43;
 	}
 	.number {
-		width: 28px;
-		height: 28px;
+		width: 40px;
+		height: 40px;
 		display: grid;
 		place-items: center;
 		border: 1px solid var(--line);
-		border-radius: 9px;
-		font-size: 11px;
+		border-radius: 12px;
+		font-size: 12px;
 		background: transparent;
 		color: inherit;
 		cursor: pointer;
 	}
 	.step-copy {
+		min-width: 0;
+	}
+	.step-heading {
+		width: 100%;
+		min-height: 40px;
+		display: flex;
+		align-items: center;
 		border: 0;
 		background: transparent;
 		color: inherit;
@@ -1032,32 +1139,85 @@
 		padding: 0;
 		cursor: pointer;
 	}
-	.step-copy b,
-	.step-copy small,
-	.instruction {
-		display: block;
-	}
-	.step-copy b {
-		font-size: 13px;
+	.step-heading b {
+		font-size: 14px;
 		font-weight: 540;
 		color: inherit;
 	}
-	.step-copy small {
-		color: var(--quiet);
+	.step-facts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 5px 12px;
+		margin-top: 2px;
 		font-size: 10px;
-		margin-top: 8px;
-		line-height: 1.5;
+		color: var(--quiet);
 	}
 	.instruction {
-		color: var(--muted);
-		font-size: 12px;
-		line-height: 1.65;
-		margin-top: 10px;
+		display: grid;
+		grid-column: 1/-1;
+		gap: 0;
+		margin-top: 4px;
 		max-width: 60ch;
 	}
+	.coach-line {
+		display: grid;
+		grid-template-columns: 22px 1fr;
+		gap: 10px;
+		padding: 10px 0;
+		border-top: 1px solid rgba(255, 255, 255, 0.05);
+		color: var(--muted);
+		font-size: 13px;
+		line-height: 1.62;
+	}
+	.coach-line i {
+		width: 20px;
+		height: 20px;
+		display: grid;
+		place-items: center;
+		border-radius: 6px;
+		background: var(--surface-3);
+		color: var(--quiet);
+		font-size: 9px;
+		font-style: normal;
+		margin-top: 1px;
+	}
+	.step-goal {
+		display: grid;
+		gap: 4px;
+		margin-top: 12px;
+		padding: 12px;
+		border: 1px solid rgba(225, 233, 219, 0.11);
+		border-radius: 11px;
+		background: rgba(225, 233, 219, 0.035);
+		color: var(--muted);
+		font-size: 12px;
+		line-height: 1.45;
+	}
+	.step-goal b {
+		color: var(--accent);
+		font-size: 9px;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+	}
+	.complete-step {
+		min-height: 44px;
+		width: 100%;
+		margin-top: 14px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		border: 1px solid var(--line-strong);
+		border-radius: 11px;
+		background: var(--surface-3);
+		color: var(--text);
+		font-size: 12px;
+		font-weight: 600;
+		cursor: pointer;
+	}
 	.expand-button {
-		width: 30px;
-		height: 30px;
+		width: 40px;
+		height: 40px;
 		display: grid;
 		place-items: center;
 		border: 0;
@@ -1098,7 +1258,7 @@
 	.primary,
 	.quiet-button,
 	.danger {
-		min-height: 40px;
+		min-height: 44px;
 		border-radius: 11px;
 		padding: 0 14px;
 		display: inline-flex;
@@ -1211,25 +1371,25 @@
 	}
 	.shopping-row {
 		display: grid;
-		grid-template-columns: 39px 1fr 36px;
+		grid-template-columns: 46px 1fr 44px;
 		align-items: center;
-		min-height: 58px;
+		min-height: 64px;
 		border-top: 1px solid rgba(255, 255, 255, 0.045);
 	}
 	.shopping-row.done {
 		opacity: 0.42;
 	}
 	.shopping-row label {
-		min-width: 39px;
-		min-height: 48px;
+		min-width: 46px;
+		min-height: 58px;
 		display: flex;
 		align-items: center;
 		cursor: pointer;
 	}
 	.big-check {
-		width: 26px;
-		height: 26px;
-		border-radius: 8px;
+		width: 30px;
+		height: 30px;
+		border-radius: 10px;
 	}
 	.item-copy {
 		border: 0;
@@ -1244,12 +1404,12 @@
 	}
 	.item-copy b {
 		color: var(--text);
-		font-size: 13px;
+		font-size: 14px;
 		font-weight: 520;
 	}
 	.item-copy span {
 		color: var(--quiet);
-		font-size: 10px;
+		font-size: 11px;
 		margin-top: 4px;
 	}
 	.empty-row {
@@ -1334,7 +1494,7 @@
 		grid-template-columns: minmax(0, 1fr) auto 38px;
 		gap: 9px;
 		align-items: center;
-		min-height: 66px;
+		min-height: 72px;
 		border-top: 1px solid var(--line);
 	}
 	.inventory-row.due {
@@ -1377,8 +1537,8 @@
 		overflow: hidden;
 	}
 	.quantity-control button {
-		width: 34px;
-		height: 34px;
+		width: 40px;
+		height: 40px;
 		border: 0;
 		border-right: 1px solid var(--line);
 		background: var(--surface-2);
@@ -1398,7 +1558,7 @@
 	}
 	.status {
 		min-width: 76px;
-		height: 32px;
+		height: 38px;
 		border-radius: 9px;
 		border: 1px solid rgba(217, 230, 207, 0.15);
 		background: rgba(217, 230, 207, 0.06);
@@ -1415,8 +1575,8 @@
 		border-color: rgba(215, 152, 144, 0.2);
 	}
 	.basket-button {
-		width: 36px;
-		height: 36px;
+		width: 40px;
+		height: 40px;
 		display: grid;
 		place-items: center;
 		border: 0;
@@ -1597,19 +1757,27 @@
 		.account small {
 			display: none;
 		}
+		.recipe-edit {
+			width: 38px;
+			padding: 0;
+			font-size: 0;
+			justify-content: center;
+		}
 		.cook,
 		.shopping {
-			padding-top: 43px;
+			padding-top: 34px;
 		}
 		.recipe-title {
-			height: 2.08em;
-			font-size: 44px;
+			font-size: 40px;
 		}
 		.hero {
-			margin-bottom: 28px;
+			margin-bottom: 22px;
 		}
 		.cook-grid {
 			grid-template-columns: 1fr;
+		}
+		.cook-grid.prep-ready .steps-card {
+			order: -1;
 		}
 		.card {
 			border-radius: 19px;
@@ -1680,7 +1848,7 @@
 	}
 	@media (max-width: 390px) {
 		.recipe-title {
-			font-size: 42px;
+			font-size: 38px;
 		}
 		.inventory-row {
 			grid-template-columns: minmax(0, 1fr) 36px;
