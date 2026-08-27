@@ -27,14 +27,25 @@ export type RecipeStep = {
 	goal?: string;
 	science?: string;
 };
+export type RecipeConsumption = {
+	id: string;
+	recipeId: string;
+	position: number;
+	inventoryName: string;
+	quantity: number;
+	unit: string;
+	trackingType: TrackingType;
+};
 export type Recipe = {
 	id: string;
 	title: string;
 	cookDate: string;
 	servings: number;
 	learningFocus: string;
+	isFavorite: boolean;
 	prepItems: PrepItem[];
 	steps: RecipeStep[];
+	consumptions: RecipeConsumption[];
 };
 export type RecipeHistoryItem = {
 	id: string;
@@ -42,6 +53,7 @@ export type RecipeHistoryItem = {
 	cookDate: string;
 	learningFocus: string;
 	completedAt: string | null;
+	isFavorite: boolean;
 };
 export type CookingSession = {
 	id: string;
@@ -51,7 +63,13 @@ export type CookingSession = {
 	completedAt: string | null;
 };
 export type RecipeNote = { id: string; recipeId: string; content: string };
-export type ShoppingList = { id: string; title: string; startDate: string; endDate: string };
+export type ShoppingList = {
+	id: string;
+	title: string;
+	startDate: string;
+	endDate: string;
+	checkedOutAt: string | null;
+};
 export type ShoppingItem = {
 	id: string;
 	listId: string;
@@ -61,6 +79,12 @@ export type ShoppingItem = {
 	category: ShoppingCategory;
 	position: number;
 	isChecked: boolean;
+	addedToInventory: boolean;
+	inventoryTrackingType: TrackingType;
+	inventoryQuantity: number | null;
+	inventoryUnit: string;
+	inventoryLocation: Location;
+	rememberForNext: boolean;
 };
 export type InventoryItem = {
 	id: string;

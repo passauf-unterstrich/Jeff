@@ -9,6 +9,8 @@ Technik: SvelteKit 5 · TypeScript · Supabase Auth/Postgres/RLS · Vercel.
 - **Kochen:** editierbares Tagesrezept, ausführlich coachende Schritte, Mise-en-Place- und Schritt-Fortschritt, Lernfokus, Notiz und Kochabschluss.
 - **Historie:** frühere Rezepte chronologisch wiederfinden und samt gespeichertem Kochstand öffnen.
 - **Einkaufen:** feste Abteilungsreihenfolge, antippbare Checkboxen, Hinzufügen, Bearbeiten, Löschen und Reaktivieren.
+- **Checkout:** Nur tatsächlich abgehakte Einkäufe gelangen in den Vorrat; offene Punkte lassen sich gezielt für die nächste KI-Liste merken.
+- **Kochabschluss:** Exakt verfolgte Hauptzutaten werden erst beim tatsächlichen Abschluss einmalig abgezogen; Favoriten bleiben zusätzlich markiert.
 - **Vorrat:** Suche und Lagerortfilter; entweder genaue Menge oder nur `vorhanden / wenig / leer`; Mengen reduzieren; Artikel direkt auf die Einkaufsliste setzen; Verbrauchsdaten sind optional und werden dezent markiert.
 - **Persistenz:** ohne Konfiguration lokal im Browser; mit Supabase nutzergebunden und geräteübergreifend.
 - **Login:** E-Mail/Passwort und Magic Link.
@@ -101,6 +103,10 @@ Die Oberfläche arbeitet über eine kleine Repository-Schicht in `src/lib/reposi
 Die verbindlichen Regeln für diese spätere Anbindung – inklusive Schrittqualität, spontanem Abendmodus, Wocheneinkauf und einfacher Vorratslogik – stehen in [`docs/coach-contract.md`](docs/coach-contract.md).
 
 Das bewusst kleine KI-Eingabeformat ist als JSON Schema in [`docs/recipe.schema.json`](docs/recipe.schema.json) definiert. Ein Rezept enthält geordnete Arrays statt einer fest eingebauten Schrittzahl. Jeder Schritt trennt Handlung, sichtbares Ziel und eine kurze wissenschaftliche Erklärung. Der Kochfortschritt bleibt als eigene Session vom Rezeptinhalt getrennt.
+
+Für Einkaufsplanungen gibt es zusätzlich [`docs/shopping-list.schema.json`](docs/shopping-list.schema.json). Es trennt die sichtbare Einkaufsmenge vom späteren Vorratszugang. Der vollständige Kreislauf für einen offenen Claude- oder anderen KI-Chat steht in [`docs/coach-contract.md`](docs/coach-contract.md).
+
+Eine direkt nutzbare Arbeitsanweisung für den Claude-Chat „KI Bootcamp Einkaufsplanung“ liegt in [`docs/claude-coach-prompt.md`](docs/claude-coach-prompt.md). Ohne eine später einzurichtende geschützte Schnittstelle kann der Cloud-Chat Jeff noch nicht selbstständig lesen oder verändern.
 
 Für diese spätere Anbindung gehört ein geheimer KI- oder Service-Schlüssel ausschließlich in eine geschützte serverseitige Funktion (zum Beispiel eine Supabase Edge Function oder Vercel Function). Er darf niemals in eine `PUBLIC_*`-Variable oder den Browser gelangen. Version 1 enthält absichtlich noch keine KI-API und keinen Chat.
 

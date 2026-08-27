@@ -1,0 +1,51 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://jeff.local/schemas/shopping-list.schema.json",
+	"title": "JeffShoppingListInput",
+	"description": "Eine aktuelle Einkaufsliste für Jeff. Sichtbare Einkaufsangaben und spätere Vorratszugänge sind bewusst getrennt.",
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["title", "items"],
+	"properties": {
+		"title": { "type": "string", "minLength": 1, "maxLength": 160 },
+		"start_date": { "type": ["string", "null"], "format": "date" },
+		"end_date": { "type": ["string", "null"], "format": "date" },
+		"items": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["name", "display_quantity", "category", "inventory"],
+				"properties": {
+					"name": { "type": "string", "minLength": 1, "maxLength": 120 },
+					"display_quantity": { "type": "string", "maxLength": 60 },
+					"note": { "type": "string", "maxLength": 160 },
+					"category": {
+						"enum": [
+							"Gemüse & Obst",
+							"Brot, Trockenware & Saucen",
+							"Kühlregal",
+							"Fleischtheke & Käse",
+							"Tiefkühl",
+							"Getränke & Snacks",
+							"Küchenabteilung"
+						]
+					},
+					"inventory": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": ["tracking_type", "quantity", "unit", "location"],
+						"properties": {
+							"tracking_type": { "enum": ["exact", "basic"] },
+							"quantity": { "type": ["number", "null"], "minimum": 0 },
+							"unit": { "type": "string", "maxLength": 40 },
+							"location": {
+								"enum": ["Kühlschrank", "Gefrierfach", "Vorratsschrank", "Arbeitsfläche"]
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}

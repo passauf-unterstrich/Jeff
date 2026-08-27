@@ -67,6 +67,19 @@ export function createSeedData(): AppData {
 		goal,
 		science
 	}));
+	const consumptions = [
+		['Rinderhack', 180, 'g', 'exact'],
+		['Gurke', 0.5, 'Stück', 'exact'],
+		['Karotte', 1, 'Stück', 'exact']
+	].map(([inventoryName, quantity, unit, trackingType], position) => ({
+		id: id(),
+		recipeId,
+		position,
+		inventoryName: String(inventoryName),
+		quantity: Number(quantity),
+		unit: String(unit),
+		trackingType: trackingType as 'exact' | 'basic'
+	}));
 	const inventorySeed: Array<
 		[string, 'exact' | 'basic', number | null, string, Location, BasicStatus, string?]
 	> = [
@@ -97,14 +110,16 @@ export function createSeedData(): AppData {
 			note: ''
 		})
 	);
-	const shoppingSeed: Array<[string, string, ShoppingCategory, string?]> = [
-		['Gurke', '1', 'Gemüse & Obst'],
-		['Karotten', '2', 'Gemüse & Obst'],
-		['Ingwer', '1 Stück', 'Gemüse & Obst'],
-		['Frühlingszwiebeln', '1 Bund', 'Gemüse & Obst'],
-		['Limetten', '2', 'Gemüse & Obst'],
-		['Sesam', '1 Packung', 'Brot, Trockenware & Saucen'],
-		['Rinderhack', '180 g', 'Fleischtheke & Käse', 'möglichst frisch']
+	const shoppingSeed: Array<
+		[string, string, ShoppingCategory, 'exact' | 'basic', number | null, string, Location, string?]
+	> = [
+		['Gurke', '1', 'Gemüse & Obst', 'exact', 1, 'Stück', 'Kühlschrank'],
+		['Karotte', '2', 'Gemüse & Obst', 'exact', 2, 'Stück', 'Kühlschrank'],
+		['Ingwer', '1 Stück', 'Gemüse & Obst', 'exact', 1, 'Stück', 'Kühlschrank'],
+		['Frühlingszwiebeln', '1 Bund', 'Gemüse & Obst', 'exact', 1, 'Bund', 'Kühlschrank'],
+		['Limetten', '2', 'Gemüse & Obst', 'exact', 2, 'Stück', 'Kühlschrank'],
+		['Sesam', '1 Packung', 'Brot, Trockenware & Saucen', 'basic', null, '', 'Vorratsschrank'],
+		['Rinderhack', '180 g', 'Fleischtheke & Käse', 'exact', 180, 'g', 'Kühlschrank', 'möglichst frisch']
 	];
 
 	return {
@@ -114,22 +129,50 @@ export function createSeedData(): AppData {
 			cookDate: new Date().toISOString().slice(0, 10),
 			servings: 1,
 			learningFocus: 'Pfannenglasur und schnelle Säure',
+			isFavorite: false,
 			prepItems: prep,
-			steps
+			steps,
+			consumptions
 		},
 		session: { id: id(), recipeId, prepProgress: {}, stepProgress: {}, completedAt: null },
 		note: { id: id(), recipeId, content: '' },
-		shoppingList: { id: listId, title: 'Einkauf für Do–So', startDate: '', endDate: '' },
-		shoppingItems: shoppingSeed.map(([name, quantity, category, note = ''], position) => ({
-			id: id(),
-			listId,
-			name,
-			quantity,
-			category,
-			note,
-			position,
-			isChecked: false
-		})),
+		shoppingList: {
+			id: listId,
+			title: 'Einkauf für Do–So',
+			startDate: '',
+			endDate: '',
+			checkedOutAt: null
+		},
+		shoppingItems: shoppingSeed.map(
+			(
+				[
+					name,
+					quantity,
+					category,
+					inventoryTrackingType,
+					inventoryQuantity,
+					inventoryUnit,
+					inventoryLocation,
+					note = ''
+				],
+				position
+			) => ({
+				id: id(),
+				listId,
+				name,
+				quantity,
+				category,
+				note,
+				position,
+				isChecked: false,
+				addedToInventory: false,
+				inventoryTrackingType,
+				inventoryQuantity,
+				inventoryUnit,
+				inventoryLocation,
+				rememberForNext: false
+			})
+		),
 		inventory,
 		recipeHistory: [
 			{
@@ -137,7 +180,8 @@ export function createSeedData(): AppData {
 				title: 'Ginger-Beef-Rice-Bowl',
 				cookDate: new Date().toISOString().slice(0, 10),
 				learningFocus: 'Pfannenglasur und schnelle Säure',
-				completedAt: null
+				completedAt: null,
+				isFavorite: false
 			}
 		]
 	};

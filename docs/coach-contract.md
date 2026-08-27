@@ -2,6 +2,12 @@
 
 Dieses Dokument beschreibt die fachliche Schnittstelle für eine spätere KI-Anbindung. Version 1 enthält absichtlich noch keine KI-API. Der Coach soll später über eine geschützte Serverfunktion dieselben Supabase-Daten schreiben, die Jeff heute manuell bearbeitet.
 
+Der offene Cloud-Chat – zum Beispiel „KI Bootcamp Einkaufsplanung“ in Claude – ist der denkende Koch-Coach. Jeff ist kein Chatbot, sondern die verlässliche Daten- und Arbeitsoberfläche. Die Zusammenarbeit folgt immer demselben Kreislauf:
+
+`Einkauf planen → im Laden abhaken → Checkout → Vorrat aktualisieren → Rezept planen → kochen → Kochabschluss → Vorrat aktualisieren → Historie/Favorit`
+
+Die KI plant; nur eine ausdrückliche Handlung des Menschen bestätigt die Realität. Das Erstellen einer Einkaufsliste erhöht noch keinen Vorrat. Das Erstellen eines Rezepts verbraucht noch keine Zutaten.
+
 ## Abendmodus: „Ich habe Hunger – was kochen wir?“
 
 1. Aktuellen Vorrat des angemeldeten Nutzers lesen.
@@ -9,6 +15,7 @@ Dieses Dokument beschreibt die fachliche Schnittstelle für eine spätere KI-Anb
 3. Eine kleine, vollständige Portion planen. Verderbliche Reste nur erzeugen, wenn ihre nächste Verwendung klar ist.
 4. Rezept, Mise en Place und Schritte als neue Datensätze speichern; Koch-Session und Notiz leer anlegen.
 5. Jeff lädt das neueste Rezept und zeigt es sofort als Kochmodus.
+6. Für exakt verfolgte Hauptzutaten `stock_consumptions` mitschreiben. Gewürze und einfache Basics gehören nicht in diese Abzugsliste.
 
 Das verbindliche, maschinenlesbare Eingabeformat steht in [`recipe.schema.json`](recipe.schema.json). Die Arrays dürfen beliebig viele Mise-en-Place-Punkte und Kochschritte enthalten. Ihre Reihenfolge ist die spätere Anzeigereihenfolge; technische IDs, `user_id` und Positionswerte erzeugt die geschützte Serverfunktion.
 
@@ -16,12 +23,32 @@ Die angefragte Personenzahl ist Teil des Auftrags an den Coach. Der Coach berech
 
 ## Einkaufsmodus: „Was kaufen wir für die Woche?“
 
-1. Vorrat lesen und leere oder knappe Basics berücksichtigen.
+1. Vorrat und aktuell gemerkte, noch nicht erledigte Einkaufspunkte lesen. Gemerkte Punkte werden in die neue Liste übernommen und danach an der alten Liste deaktiviert, damit immer nur die aktuelle Liste maßgeblich ist.
 2. Kreative Gerichte für kleine Portionen und strategisch gemeinsame Zutaten planen.
 3. Nur tatsächlich fehlende Mengen einkaufen.
 4. Eine aktuelle Einkaufsliste anlegen und Einträge exakt diesen Kategorien zuordnen:
    `Gemüse & Obst` → `Brot, Trockenware & Saucen` → `Kühlregal` → `Fleischtheke & Käse` → `Tiefkühl` → `Getränke & Snacks` → `Küchenabteilung`.
 5. Mengen in alltagstauglicher Einkaufsform schreiben, zum Beispiel `2 Stück`, `1 Bund` oder `180 g`.
+
+Das verbindliche Format steht in [`shopping-list.schema.json`](shopping-list.schema.json). Jeder sichtbare Eintrag enthält zusätzlich eine kleine strukturierte Beschreibung seines späteren Vorratszugangs. Diese Daten sind im Laden unsichtbar.
+
+## Checkout im Supermarkt
+
+1. Der Nutzer hakt nur tatsächlich gekaufte Dinge ab.
+2. Checkout darf jederzeit erfolgen; offene Punkte blockieren ihn nicht.
+3. Vor der endgültigen Bestätigung zeigt Jeff ausschließlich die nicht gekauften Punkte.
+4. Nur dort erneut mit „Nächstes Mal merken“ markierte Punkte bleiben für die nächste KI-Planung erhalten. Alles andere wird vergessen.
+5. Nur abgehakte Punkte werden einmalig in den Vorrat übernommen. Basics wechseln auf `vorhanden`; genaue Artikel erhöhen ihre passende Menge.
+6. Die abgeschlossene Liste ist danach unveränderlich. Eine neue KI-Planung erzeugt eine neue aktuelle Liste; eine Einkaufshistorie ist in der Oberfläche nicht nötig.
+
+## Kochabschluss
+
+1. Ein Rezept ist bereits beim Erstellen normal in der Historie gespeichert.
+2. Erst „Kochen abschließen“ bestätigt, dass wirklich gekocht wurde.
+3. Jeff zieht dann einmalig die strukturierten `stock_consumptions` von den passenden genauen Vorratsartikeln ab. Mengen werden nie negativ.
+4. Basics und Gewürze werden nicht automatisch verbraucht. Meldet der Nutzer dem Coach, dass etwas leer ist, wird lediglich dessen Status aktualisiert.
+5. Favorisieren ist eine zusätzliche persönliche Markierung und unabhängig von der normalen Historie.
+6. Checkout und Kochabschluss sind idempotent: Wiederholtes Antippen darf Bestände nie doppelt verändern.
 
 ## Pflichtqualität jedes Kochschritts
 
@@ -57,3 +84,5 @@ Jeff trennt dabei bewusst drei Ebenen: `instruction` sagt exakt, was zu tun ist;
 ## Sicherheit
 
 Der Coach handelt immer im Kontext des angemeldeten Nutzers. Geheime Schlüssel liegen ausschließlich in einer serverseitigen Funktion. Der Supabase Service-Role-Key und ein KI-Schlüssel dürfen nie an Jeffs Browsercode oder eine `PUBLIC_*`-Variable ausgegeben werden.
+
+Ein Cloud-Chat erhält später nur über eine ausdrücklich eingerichtete, nutzergebundene Schnittstelle Zugriff. Bis diese Schnittstelle existiert, kann Claude die Jeff-Daten nicht selbstständig lesen oder schreiben; die vorliegenden Schemas definieren bereits exakt, welche Daten eine solche Anbindung austauschen darf.

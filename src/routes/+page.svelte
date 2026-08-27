@@ -9,6 +9,7 @@
 		ClipboardCheck,
 		Edit3,
 		History,
+		Heart,
 		Minus,
 		Package,
 		Plus,
@@ -45,6 +46,7 @@
 	let prepCollapsed = $state(false);
 	let editingRecipe = $state<Recipe | null>(null);
 	let historyOpen = $state(false);
+	let checkoutReviewOpen = $state(false);
 	let authEmail = $state('');
 	const demoMode = !supabaseConfigured();
 	const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -59,6 +61,9 @@
 	const finishedSteps = $derived(data ? Object.values(data.session.stepProgress).filter(Boolean).length : 0);
 	const finishedPrep = $derived(data ? Object.values(data.session.prepProgress).filter(Boolean).length : 0);
 	const openShoppingCount = $derived(data ? data.shoppingItems.filter((item) => !item.isChecked).length : 0);
+	const checkedShoppingCount = $derived(
+		data ? data.shoppingItems.filter((item) => item.isChecked).length : 0
+	);
 	const replenishCount = $derived(
 		data
 			? data.inventory.filter(
@@ -97,6 +102,7 @@
 			editingRecipe = null;
 			summaryOpen = false;
 			historyOpen = false;
+			checkoutReviewOpen = false;
 		};
 		window.addEventListener('keydown', closeOverlay);
 		return () => window.removeEventListener('keydown', closeOverlay);
@@ -172,11 +178,32 @@
 			loading = false;
 		}
 	}
-	function finishCooking() {
+	async function finishCooking() {
 		if (!data) return;
-		data.session.completedAt = data.session.completedAt ? null : new Date().toISOString();
-		void persist(() => repository.saveSession(data!.session));
+		if (data.session.completedAt) {
+			summaryOpen = true;
+			return;
+		}
+		await persist(async () => {
+			await repository.saveNote(data!.note);
+			await repository.completeCooking(data!.session.id);
+			data = await repository.load(data!.recipe.id);
+		});
 		summaryOpen = true;
+	}
+	function toggleFavorite() {
+		if (!data) return;
+		data.recipe.isFavorite = !data.recipe.isFavorite;
+		void persist(() => repository.saveRecipe(data!.recipe));
+	}
+	async function checkoutShopping() {
+		if (!data || data.shoppingList.checkedOutAt) return;
+		await persist(async () => {
+			await Promise.all(data!.shoppingItems.map((item) => repository.saveShoppingItem(item)));
+			await repository.checkoutShoppingList(data!.shoppingList.id);
+			data = await repository.load(data!.recipe.id);
+		});
+		checkoutReviewOpen = false;
 	}
 	async function saveRecipeEditor() {
 		if (!data || !editingRecipe || !editingRecipe.title.trim()) return;
@@ -252,7 +279,21 @@
 			note: '',
 			category,
 			position: data.shoppingItems.length,
-			isChecked: false
+			isChecked: false,
+			addedToInventory: false,
+			inventoryTrackingType:
+				category === 'Brot, Trockenware & Saucen' || category === 'Küchenabteilung' ? 'basic' : 'exact',
+			inventoryQuantity:
+				category === 'Brot, Trockenware & Saucen' || category === 'Küchenabteilung' ? null : 1,
+			inventoryUnit:
+				category === 'Brot, Trockenware & Saucen' || category === 'Küchenabteilung' ? '' : 'Stück',
+			inventoryLocation:
+				category === 'Tiefkühl'
+					? 'Gefrierfach'
+					: category === 'Kühlregal' || category === 'Fleischtheke & Käse' || category === 'Gemüse & Obst'
+						? 'Kühlschrank'
+						: 'Vorratsschrank',
+			rememberForNext: false
 		};
 	}
 	async function saveShoppingItem() {
@@ -335,7 +376,13 @@
 						? 'Kühlregal'
 						: 'Brot, Trockenware & Saucen',
 			position: data.shoppingItems.length,
-			isChecked: false
+			isChecked: false,
+			addedToInventory: false,
+			inventoryTrackingType: item.trackingType,
+			inventoryQuantity: item.trackingType === 'exact' ? 1 : null,
+			inventoryUnit: item.unit,
+			inventoryLocation: item.location,
+			rememberForNext: false
 		};
 		data.shoppingItems.push(value);
 		void persist(() => repository.saveShoppingItem(value));
@@ -421,6 +468,13 @@
 							/></label
 						>
 						<div class="recipe-actions">
+							<button
+								class="recipe-edit favorite-button"
+								class:active={data.recipe.isFavorite}
+								aria-label={data.recipe.isFavorite ? 'Aus Favoriten entfernen' : 'Als Favorit speichern'}
+								onclick={toggleFavorite}
+								><Heart size={16} fill={data.recipe.isFavorite ? 'currentColor' : 'none'} /> Favorit</button
+							>
 							<button class="recipe-edit" onclick={() => (historyOpen = true)}
 								><History size={15} /> Historie</button
 							>
@@ -522,8 +576,8 @@
 					<div>
 						<button class="quiet-button" onclick={() => persist(() => repository.saveNote(data!.note))}
 							>Notiz speichern</button
-						><button class="primary" onclick={finishCooking}
-							>{data.session.completedAt ? 'Abschluss zurücknehmen' : 'Kochen abschließen'}
+						><button class="primary" class:completed={!!data.session.completedAt} onclick={finishCooking}
+							>{data.session.completedAt ? 'Gekocht · gespeichert' : 'Kochen abschließen'}
 							<Check size={17} /></button
 						>
 					</div>
@@ -533,10 +587,15 @@
 			<main class="shopping">
 				<section class="shopping-hero">
 					<div>
-						<p class="eyebrow">AKTUELLE LISTE · {openShoppingCount} OFFEN</p>
+						<p class="eyebrow">
+							{data.shoppingList.checkedOutAt
+								? 'EINKAUF ABGESCHLOSSEN'
+								: `AKTUELLE LISTE · ${openShoppingCount} OFFEN`}
+						</p>
 						<input
 							class="list-title"
 							aria-label="Titel der Einkaufsliste"
+							disabled={!!data.shoppingList.checkedOutAt}
 							bind:value={data.shoppingList.title}
 							onblur={() => persist(() => repository.saveShoppingList(data!.shoppingList))}
 						/>
@@ -545,7 +604,9 @@
 						<button class="quiet-button" onclick={() => (inventoryOpen = true)}
 							><Package size={17} /> Vorrat
 							<span>{replenishCount ? `${replenishCount} knapp` : 'alles da'}</span></button
-						><button class="primary" onclick={() => newShoppingItem()}><Plus size={17} /> Hinzufügen</button>
+						>{#if !data.shoppingList.checkedOutAt}<button class="primary" onclick={() => newShoppingItem()}
+								><Plus size={17} /> Hinzufügen</button
+							>{/if}
 					</div>
 				</section>
 				<section class="shopping-card card">
@@ -556,35 +617,101 @@
 							<div class="group-title">
 								<span>{String(categoryIndex + 1).padStart(2, '0')}</span>
 								<h2>{category}</h2>
-								<small>{items.filter((x) => !x.isChecked).length}</small><button
-									aria-label={`${category}: Eintrag ergänzen`}
-									onclick={() => newShoppingItem(category)}><Plus size={16} /></button
-								>
+								<small>{items.filter((x) => !x.isChecked).length}</small
+								>{#if !data.shoppingList.checkedOutAt}<button
+										aria-label={`${category}: Eintrag ergänzen`}
+										onclick={() => newShoppingItem(category)}><Plus size={16} /></button
+									>{/if}
 							</div>
-							{#if items.length === 0}<button class="empty-row" onclick={() => newShoppingItem(category)}
-									>Noch nichts hier · Eintrag ergänzen</button
+							{#if items.length === 0 && !data.shoppingList.checkedOutAt}<button
+									class="empty-row"
+									onclick={() => newShoppingItem(category)}>Noch nichts hier · Eintrag ergänzen</button
 								>{/if}{#each items as item}<div class="shopping-row" class:done={item.isChecked}>
 									<label
 										><input
 											type="checkbox"
 											bind:checked={item.isChecked}
+											disabled={!!data.shoppingList.checkedOutAt}
 											onchange={() => persist(() => repository.saveShoppingItem(item))}
 										/><span class="big-check"><Check size={17} /></span></label
-									><button class="item-copy" onclick={() => (editingShopping = clone(item))}
+									><button
+										class="item-copy"
+										disabled={!!data.shoppingList.checkedOutAt}
+										onclick={() => (editingShopping = clone(item))}
 										><b>{item.name}</b><span>{item.quantity}{item.note ? ` · ${item.note}` : ''}</span
 										></button
-									><button
-										class="icon-button"
-										aria-label={`${item.name} bearbeiten`}
-										onclick={() => (editingShopping = clone(item))}><Edit3 size={16} /></button
-									>
+									>{#if !data.shoppingList.checkedOutAt}<button
+											class="icon-button"
+											aria-label={`${item.name} bearbeiten`}
+											onclick={() => (editingShopping = clone(item))}><Edit3 size={16} /></button
+										>{/if}
 								</div>{/each}
 						</div>{/each}
+				</section>
+				<section class="checkout-card card" class:done={!!data.shoppingList.checkedOutAt}>
+					<div>
+						<p class="eyebrow">CHECKOUT</p>
+						<h2>
+							{data.shoppingList.checkedOutAt
+								? 'Einkauf im Vorrat'
+								: `${checkedShoppingCount} Artikel gekauft`}
+						</h2>
+						<p>
+							{data.shoppingList.checkedOutAt
+								? 'Nur abgehakte Artikel wurden übernommen.'
+								: `${openShoppingCount} offen ist okay – Jeff übernimmt nur deine Häkchen.`}
+						</p>
+					</div>
+					{#if !data.shoppingList.checkedOutAt}<button
+							class="primary"
+							onclick={() => (checkoutReviewOpen = true)}>Checkout</button
+						>{:else}<span class="checkout-done"><Check size={18} /></span>{/if}
 				</section>
 			</main>
 		{/if}
 	{/if}
 </div>
+
+{#if checkoutReviewOpen && data}
+	<div
+		class="overlay modal-overlay"
+		role="presentation"
+		onclick={(event) => event.target === event.currentTarget && (checkoutReviewOpen = false)}
+	>
+		<div class="modal checkout-review" role="dialog" aria-modal="true" aria-labelledby="checkout-title">
+			<div class="modal-head">
+				<div>
+					<p class="eyebrow">{checkedShoppingCount} GEKAUFT · {openShoppingCount} OFFEN</p>
+					<h2 id="checkout-title">Einkauf beenden</h2>
+				</div>
+				<button class="close" aria-label="Checkout schließen" onclick={() => (checkoutReviewOpen = false)}
+					><X size={19} /></button
+				>
+			</div>
+			{#if openShoppingCount > 0}
+				<p class="review-intro">Was soll Jeff beim nächsten Einkauf noch einmal vorschlagen?</p>
+				<div class="remember-list">
+					{#each data.shoppingItems.filter((item) => !item.isChecked) as item}
+						<label>
+							<input type="checkbox" bind:checked={item.rememberForNext} /><span class="check"
+								><Check size={14} /></span
+							>
+							<span><b>{item.name}</b><small>Nächstes Mal merken</small></span>
+						</label>
+					{/each}
+				</div>
+			{:else}
+				<p class="review-intro">Alles auf der Liste ist abgehakt.</p>
+			{/if}
+			<div class="modal-actions">
+				<button class="quiet-button" onclick={() => (checkoutReviewOpen = false)}>Zurück</button>
+				<button class="primary" onclick={() => void checkoutShopping()}
+					><Check size={17} /> Einkauf beenden</button
+				>
+			</div>
+		</div>
+	</div>
+{/if}
 
 {#if inventoryOpen && data}<div
 		class="overlay"
@@ -939,7 +1066,9 @@
 					>
 						<span class="history-date">{shortDate(recipe.cookDate)}</span>
 						<span class="history-copy"
-							><b>{recipe.title}</b><small>{recipe.learningFocus || 'Ohne Lernfokus'}</small></span
+							><b
+								>{#if recipe.isFavorite}<Heart size={12} fill="currentColor" />{/if}{recipe.title}</b
+							><small>{recipe.learningFocus || 'Ohne Lernfokus'}</small></span
 						>
 						<span class="history-state"
 							>{recipe.id === data.recipe.id ? 'AKTUELL' : recipe.completedAt ? 'GEKOCHT' : 'OFFEN'}</span
@@ -961,10 +1090,16 @@
 			<p class="eyebrow">ABEND ABGESCHLOSSEN</p>
 			<h2>{data.recipe.title}</h2>
 			<p>
-				{finishedSteps} von {data.recipe.steps.length} Schritten erledigt. Deine Notiz und der Fortschritt bleiben
-				gespeichert.
+				{finishedSteps} von {data.recipe.steps.length} Schritten erledigt. Hauptzutaten wurden im Vorrat aktualisiert;
+				das Rezept bleibt in deiner Historie.
 			</p>
-			<button class="primary" onclick={() => (summaryOpen = false)}>Zurück zur Küche</button>
+			<div class="summary-actions">
+				<button class="quiet-button" class:active={data.recipe.isFavorite} onclick={toggleFavorite}
+					><Heart size={16} fill={data.recipe.isFavorite ? 'currentColor' : 'none'} />
+					{data.recipe.isFavorite ? 'Favorit' : 'Favorisieren'}</button
+				>
+				<button class="primary" onclick={() => (summaryOpen = false)}>Zurück zur Küche</button>
+			</div>
 		</section>
 	</div>{/if}
 
@@ -1218,6 +1353,9 @@
 	.recipe-edit:hover {
 		background: var(--surface-2);
 		color: var(--text);
+	}
+	.favorite-button.active {
+		color: var(--accent);
 	}
 	.recipe-actions {
 		display: flex;
@@ -1583,6 +1721,40 @@
 	.shopping-card {
 		padding: 7px 25px;
 	}
+	.checkout-card {
+		margin-top: 14px;
+		padding: 20px 22px;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 18px;
+	}
+	.checkout-card h2 {
+		margin: 0;
+		font-size: 17px;
+		font-weight: 580;
+	}
+	.checkout-card p:not(.eyebrow) {
+		margin: 6px 0 0;
+		color: var(--quiet);
+		font-size: 11px;
+	}
+	.checkout-card .eyebrow {
+		margin-bottom: 8px;
+	}
+	.checkout-card.done {
+		border-color: rgba(225, 233, 219, 0.16);
+	}
+	.checkout-done {
+		width: 42px;
+		height: 42px;
+		display: grid;
+		place-items: center;
+		border-radius: 50%;
+		background: var(--accent);
+		color: var(--accent-ink);
+		flex: 0 0 auto;
+	}
 	.shopping-group {
 		padding: 18px 0;
 		border-bottom: 1px solid var(--line);
@@ -1656,6 +1828,9 @@
 		text-align: left;
 		cursor: pointer;
 		padding: 8px 0;
+	}
+	.item-copy:disabled {
+		cursor: default;
 	}
 	.item-copy b,
 	.item-copy span {
@@ -2077,12 +2252,66 @@
 		gap: 5px;
 	}
 	.history-copy b {
+		display: flex;
+		align-items: center;
+		gap: 6px;
 		overflow: hidden;
 		color: var(--text);
 		font-size: 13px;
 		font-weight: 560;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	.checkout-review {
+		width: min(540px, 100%);
+	}
+	.review-intro {
+		margin: 0 0 13px;
+		color: var(--muted);
+		font-size: 12px;
+		line-height: 1.5;
+	}
+	.remember-list {
+		display: grid;
+		gap: 7px;
+	}
+	.remember-list label {
+		min-height: 56px;
+		display: grid;
+		grid-template-columns: 30px minmax(0, 1fr);
+		align-items: center;
+		gap: 10px;
+		padding: 8px 11px;
+		border: 1px solid var(--line);
+		border-radius: 12px;
+		cursor: pointer;
+	}
+	.remember-list input {
+		position: absolute;
+		opacity: 0;
+		pointer-events: none;
+	}
+	.remember-list .check {
+		width: 26px;
+		height: 26px;
+	}
+	.remember-list input:checked + .check {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: var(--accent-ink);
+	}
+	.remember-list label > span:last-child {
+		display: grid;
+		gap: 4px;
+	}
+	.remember-list b {
+		color: var(--text);
+		font-size: 13px;
+		font-weight: 540;
+	}
+	.remember-list small {
+		color: var(--quiet);
+		font-size: 10px;
 	}
 	.history-copy small {
 		overflow: hidden;
@@ -2118,6 +2347,15 @@
 		line-height: 1.6;
 		margin: 13px auto 22px;
 		max-width: 38ch;
+	}
+	.summary-actions {
+		display: flex;
+		justify-content: center;
+		gap: 8px;
+	}
+	.summary-actions .quiet-button.active {
+		color: var(--accent);
+		border-color: rgba(225, 233, 219, 0.24);
 	}
 	@media (max-width: 720px) {
 		.shell {
@@ -2210,6 +2448,14 @@
 		}
 		.shopping-card {
 			padding: 4px 17px;
+		}
+		.checkout-card {
+			align-items: stretch;
+			flex-direction: column;
+			padding: 18px;
+		}
+		.checkout-card .primary {
+			width: 100%;
 		}
 		.drawer {
 			width: 100%;
