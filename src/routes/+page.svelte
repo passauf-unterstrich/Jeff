@@ -2,10 +2,13 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import {
+		ArrowDown,
+		ArrowUp,
 		Check,
 		ChevronDown,
 		ClipboardCheck,
 		Edit3,
+		History,
 		Minus,
 		Package,
 		Plus,
@@ -41,6 +44,7 @@
 	let expandedStepId = $state<string | null>(null);
 	let prepCollapsed = $state(false);
 	let editingRecipe = $state<Recipe | null>(null);
+	let historyOpen = $state(false);
 	let authEmail = $state('');
 	const demoMode = !supabaseConfigured();
 	const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -92,6 +96,7 @@
 			editingShopping = null;
 			editingRecipe = null;
 			summaryOpen = false;
+			historyOpen = false;
 		};
 		window.addEventListener('keydown', closeOverlay);
 		return () => window.removeEventListener('keydown', closeOverlay);
@@ -143,6 +148,30 @@
 				.filter(Boolean) ?? [instruction]
 		);
 	}
+	function shortDate(value: string) {
+		if (!value) return 'Ohne Datum';
+		return new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: 'short', year: 'numeric' }).format(
+			new Date(`${value}T12:00:00`)
+		);
+	}
+	async function openHistoryRecipe(id: string) {
+		if (!data || id === data.recipe.id) {
+			historyOpen = false;
+			return;
+		}
+		loading = true;
+		historyOpen = false;
+		try {
+			data = await repository.load(id);
+			expandedStepId = null;
+			prepCollapsed = false;
+			error = '';
+		} catch (reason) {
+			error = reason instanceof Error ? reason.message : 'Rezept konnte nicht geöffnet werden.';
+		} finally {
+			loading = false;
+		}
+	}
 	function finishCooking() {
 		if (!data) return;
 		data.session.completedAt = data.session.completedAt ? null : new Date().toISOString();
@@ -151,9 +180,67 @@
 	}
 	async function saveRecipeEditor() {
 		if (!data || !editingRecipe || !editingRecipe.title.trim()) return;
+		if (editingRecipe.steps.length === 0) {
+			error = 'Ein Rezept braucht mindestens einen Schritt.';
+			return;
+		}
+		normalizePositions(editingRecipe.prepItems);
+		normalizePositions(editingRecipe.steps);
 		data.recipe = clone(editingRecipe);
+		const prepIds = new Set(data.recipe.prepItems.map((item) => item.id));
+		const stepIds = new Set(data.recipe.steps.map((step) => step.id));
+		data.session.prepProgress = Object.fromEntries(
+			Object.entries(data.session.prepProgress).filter(([id]) => prepIds.has(id))
+		);
+		data.session.stepProgress = Object.fromEntries(
+			Object.entries(data.session.stepProgress).filter(([id]) => stepIds.has(id))
+		);
 		editingRecipe = null;
-		await persist(() => repository.saveRecipe(data!.recipe));
+		await persist(async () => {
+			await Promise.all([repository.saveRecipe(data!.recipe), repository.saveSession(data!.session)]);
+		});
+	}
+	function normalizePositions(items: Array<{ position: number }>) {
+		items.forEach((item, index) => (item.position = index));
+	}
+	function moveRecipeItem<T extends { position: number }>(items: T[], index: number, direction: -1 | 1) {
+		const target = index + direction;
+		if (target < 0 || target >= items.length) return;
+		[items[index], items[target]] = [items[target], items[index]];
+		normalizePositions(items);
+	}
+	function addPrepItem() {
+		if (!editingRecipe) return;
+		editingRecipe.prepItems.push({
+			id: crypto.randomUUID(),
+			recipeId: editingRecipe.id,
+			position: editingRecipe.prepItems.length,
+			text: ''
+		});
+	}
+	function removePrepItem(id: string) {
+		if (!editingRecipe) return;
+		editingRecipe.prepItems = editingRecipe.prepItems.filter((item) => item.id !== id);
+		normalizePositions(editingRecipe.prepItems);
+	}
+	function addRecipeStep() {
+		if (!editingRecipe) return;
+		editingRecipe.steps.push({
+			id: crypto.randomUUID(),
+			recipeId: editingRecipe.id,
+			position: editingRecipe.steps.length,
+			title: '',
+			instruction: '',
+			duration: '',
+			temperature: '',
+			goal: '',
+			science: ''
+		});
+	}
+	function removeRecipeStep(id: string) {
+		if (!editingRecipe || editingRecipe.steps.length === 1) return;
+		editingRecipe.steps = editingRecipe.steps.filter((step) => step.id !== id);
+		normalizePositions(editingRecipe.steps);
 	}
 	function newShoppingItem(category: ShoppingItem['category'] = SHOPPING_CATEGORIES[0]) {
 		if (!data) return;
@@ -269,7 +356,16 @@
 
 <div class="shell">
 	<header>
-		<a class="brand" href="/" aria-label="Jeff Startseite"><span>J</span><b>Jeff</b></a>
+		<a class="brand" href="/" aria-label="Jeff Startseite"
+			><span class="brand-mark" aria-hidden="true"
+				><svg viewBox="0 0 32 32" fill="none">
+					<path
+						d="M10 21V17.5C6.4 16.4 6.2 11.2 10.1 10.2C11 5.6 17.4 4.7 19.7 8.5C24.5 7.6 26.7 13.7 23 16.4V21"
+					/>
+					<path d="M10 21H23M11.5 25H21.5" />
+				</svg></span
+			><b>Jeff</b></a
+		>
 		<nav aria-label="Hauptbereiche">
 			<button class:active={bereich === 'kochen'} onclick={() => (bereich = 'kochen')}>Kochen</button><button
 				class:active={bereich === 'einkaufen'}
@@ -306,15 +402,8 @@
 							type="date"
 							bind:value={data.recipe.cookDate}
 							onblur={() => persist(() => repository.saveRecipe(data!.recipe))}
-						/><label
-							><input
-								aria-label="Portionen"
-								type="number"
-								min="1"
-								max="24"
-								bind:value={data.recipe.servings}
-								onblur={() => persist(() => repository.saveRecipe(data!.recipe))}
-							/> PORTION</label
+						/><span class="servings"
+							>{data.recipe.servings} {data.recipe.servings === 1 ? 'PORTION' : 'PORTIONEN'}</span
 						>
 					</div>
 					<textarea
@@ -331,11 +420,16 @@
 								onblur={() => persist(() => repository.saveRecipe(data!.recipe))}
 							/></label
 						>
-						<button
-							class="recipe-edit"
-							aria-label="Rezept bearbeiten"
-							onclick={() => (editingRecipe = clone(data!.recipe))}><Edit3 size={15} /> Bearbeiten</button
-						>
+						<div class="recipe-actions">
+							<button class="recipe-edit" onclick={() => (historyOpen = true)}
+								><History size={15} /> Historie</button
+							>
+							<button
+								class="recipe-edit"
+								aria-label="Rezept bearbeiten"
+								onclick={() => (editingRecipe = clone(data!.recipe))}><Edit3 size={15} /> Bearbeiten</button
+							>
+						</div>
 					</div>
 				</section>
 				<div class="cook-grid" class:prep-ready={finishedPrep === data.recipe.prepItems.length}>
@@ -405,6 +499,10 @@
 												class="coach-line"><i>{sentenceIndex + 1}</i><span>{sentence}</span></span
 											>{/each}
 										{#if step.goal}<span class="step-goal"><b>Ziel</b>{step.goal}</span>{/if}
+										{#if step.science}<aside class="step-science">
+												<b>Warum das funktioniert</b>
+												<span>{step.science}</span>
+											</aside>{/if}
 										<button class="complete-step" onclick={() => toggleStep(step.id)}
 											><Check size={17} />
 											{data.session.stepProgress[step.id] ? 'Wieder öffnen' : 'Schritt erledigt'}</button
@@ -558,7 +656,12 @@
 		>
 			<div class="modal-head">
 				<h2>Einkaufseintrag</h2>
-				<button type="button" class="close" onclick={() => (editingShopping = null)}><X size={19} /></button>
+				<button
+					type="button"
+					class="close"
+					aria-label="Einkaufseintrag schließen"
+					onclick={() => (editingShopping = null)}><X size={19} /></button
+				>
 			</div>
 			<label
 				>Name<input
@@ -606,7 +709,12 @@
 		>
 			<div class="modal-head">
 				<h2>Vorratsartikel</h2>
-				<button type="button" class="close" onclick={() => (editingInventory = null)}><X size={19} /></button>
+				<button
+					type="button"
+					class="close"
+					aria-label="Vorratsartikel schließen"
+					onclick={() => (editingInventory = null)}><X size={19} /></button
+				>
 			</div>
 			<label
 				>Name<input
@@ -682,19 +790,81 @@
 					<p class="eyebrow">INHALT FÜR MENSCH & KOCH-COACH</p>
 					<h2>Rezept bearbeiten</h2>
 				</div>
-				<button type="button" class="close" onclick={() => (editingRecipe = null)}><X size={19} /></button>
+				<button
+					type="button"
+					class="close"
+					aria-label="Rezepteditor schließen"
+					onclick={() => (editingRecipe = null)}><X size={19} /></button
+				>
 			</div>
-			<h3>Mise en Place</h3>
+			<div class="editor-section-head">
+				<h3>Mise en Place</h3>
+				<button type="button" class="editor-add" onclick={addPrepItem}><Plus size={15} /> Punkt</button>
+			</div>
 			<div class="editor-list">
 				{#each editingRecipe.prepItems as item, index}
-					<label><span>{index + 1}</span><input required maxlength="300" bind:value={item.text} /></label>
+					<div class="editor-list-row">
+						<span>{index + 1}</span><input
+							required
+							maxlength="300"
+							aria-label={`Vorbereitung ${index + 1}`}
+							bind:value={item.text}
+						/>
+						<div class="editor-order">
+							<button
+								type="button"
+								disabled={index === 0}
+								aria-label="Nach oben"
+								onclick={() => moveRecipeItem(editingRecipe!.prepItems, index, -1)}
+								><ArrowUp size={15} /></button
+							>
+							<button
+								type="button"
+								disabled={index === editingRecipe!.prepItems.length - 1}
+								aria-label="Nach unten"
+								onclick={() => moveRecipeItem(editingRecipe!.prepItems, index, 1)}
+								><ArrowDown size={15} /></button
+							>
+							<button type="button" aria-label="Vorbereitung löschen" onclick={() => removePrepItem(item.id)}
+								><Trash2 size={15} /></button
+							>
+						</div>
+					</div>
 				{/each}
+				{#if editingRecipe.prepItems.length === 0}<p class="editor-empty">Keine Vorbereitung nötig.</p>{/if}
 			</div>
-			<h3>Ablauf</h3>
+			<div class="editor-section-head">
+				<h3>Ablauf</h3>
+				<button type="button" class="editor-add" onclick={addRecipeStep}><Plus size={15} /> Schritt</button>
+			</div>
 			<div class="editor-steps">
 				{#each editingRecipe.steps as step, index}
 					<section>
-						<b>Schritt {index + 1}</b>
+						<div class="editor-step-head">
+							<b>Schritt {index + 1}</b>
+							<div class="editor-order">
+								<button
+									type="button"
+									disabled={index === 0}
+									aria-label="Schritt nach oben"
+									onclick={() => moveRecipeItem(editingRecipe!.steps, index, -1)}
+									><ArrowUp size={15} /></button
+								>
+								<button
+									type="button"
+									disabled={index === editingRecipe!.steps.length - 1}
+									aria-label="Schritt nach unten"
+									onclick={() => moveRecipeItem(editingRecipe!.steps, index, 1)}
+									><ArrowDown size={15} /></button
+								>
+								<button
+									type="button"
+									disabled={editingRecipe!.steps.length === 1}
+									aria-label="Schritt löschen"
+									onclick={() => removeRecipeStep(step.id)}><Trash2 size={15} /></button
+								>
+							</div>
+						</div>
 						<input
 							required
 							maxlength="160"
@@ -722,6 +892,15 @@
 								bind:value={step.goal}
 							/>
 						</div>
+						<label class="science-field"
+							>Warum das funktioniert<textarea
+								required
+								rows="3"
+								maxlength="900"
+								placeholder="Kurze chemische oder physikalische Erklärung"
+								bind:value={step.science}
+							></textarea></label
+						>
 					</section>
 				{/each}
 			</div>
@@ -730,6 +909,45 @@
 				><button class="primary">Rezept speichern</button>
 			</div>
 		</form>
+	</div>
+{/if}
+
+{#if historyOpen && data}
+	<div
+		class="overlay modal-overlay"
+		role="presentation"
+		onclick={(event) => event.target === event.currentTarget && (historyOpen = false)}
+	>
+		<div class="modal history-modal" role="dialog" aria-modal="true" aria-labelledby="history-title">
+			<div class="modal-head">
+				<div>
+					<p class="eyebrow">DEINE KÜCHE</p>
+					<h2 id="history-title">Rezept-Historie</h2>
+				</div>
+				<button
+					type="button"
+					class="close"
+					aria-label="Rezept-Historie schließen"
+					onclick={() => (historyOpen = false)}><X size={19} /></button
+				>
+			</div>
+			<div class="history-list">
+				{#each data.recipeHistory as recipe}
+					<button
+						class:active={recipe.id === data.recipe.id}
+						onclick={() => void openHistoryRecipe(recipe.id)}
+					>
+						<span class="history-date">{shortDate(recipe.cookDate)}</span>
+						<span class="history-copy"
+							><b>{recipe.title}</b><small>{recipe.learningFocus || 'Ohne Lernfokus'}</small></span
+						>
+						<span class="history-state"
+							>{recipe.id === data.recipe.id ? 'AKTUELL' : recipe.completedAt ? 'GEKOCHT' : 'OFFEN'}</span
+						>
+					</button>
+				{/each}
+			</div>
+		</div>
 	</div>
 {/if}
 
@@ -752,7 +970,7 @@
 
 <style>
 	.shell {
-		width: min(100%, 1180px);
+		width: min(100%, 980px);
 		margin: 0 auto;
 		padding: 0 20px 90px;
 	}
@@ -777,14 +995,25 @@
 		text-decoration: none;
 		width: fit-content;
 	}
-	.brand span {
+	.brand-mark {
 		width: 30px;
 		height: 30px;
 		display: grid;
 		place-items: center;
-		border: 1px solid var(--line-strong);
+		border: 1px solid rgba(255, 255, 255, 0.82);
 		border-radius: 9px;
-		font-weight: 700;
+		background: #0a0b0a;
+		box-shadow:
+			0 0 0 1px rgba(0, 0, 0, 0.8),
+			0 5px 18px rgba(0, 0, 0, 0.35);
+	}
+	.brand-mark svg {
+		width: 22px;
+		height: 22px;
+		stroke: #fff;
+		stroke-width: 2.4;
+		stroke-linecap: round;
+		stroke-linejoin: round;
 	}
 	.brand b {
 		font-size: 15px;
@@ -915,15 +1144,14 @@
 		text-transform: uppercase;
 		width: 100px;
 	}
-	.recipe-meta label {
+	.servings {
 		color: var(--quiet);
 		font-size: 10px;
 		letter-spacing: 0.11em;
 		font-weight: 700;
 	}
-	.recipe-meta label input {
-		width: 25px;
-		color: var(--muted);
+	.servings {
+		white-space: nowrap;
 	}
 	.recipe-title {
 		display: block;
@@ -990,6 +1218,11 @@
 	.recipe-edit:hover {
 		background: var(--surface-2);
 		color: var(--text);
+	}
+	.recipe-actions {
+		display: flex;
+		align-items: center;
+		gap: 4px;
 	}
 	.cook-grid {
 		display: grid;
@@ -1092,21 +1325,30 @@
 		border-color: var(--accent);
 	}
 	.step {
+		position: relative;
 		width: 100%;
 		display: grid;
 		grid-template-columns: 44px minmax(0, 1fr) 40px;
 		gap: 12px;
 		align-items: start;
 		text-align: left;
-		border-top: 1px solid var(--line);
+		border-top: 0;
 		background: transparent;
 		min-height: 69px;
 		padding: 18px 4px;
 		color: var(--muted);
 	}
+	.step::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 56px;
+		right: 4px;
+		height: 1px;
+		background: var(--line);
+	}
 	.step.current {
 		background: rgba(217, 230, 207, 0.045);
-		box-shadow: inset 2px 0 var(--accent);
 		color: var(--text);
 	}
 	.step.done {
@@ -1198,6 +1440,23 @@
 		font-size: 9px;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
+	}
+	.step-science {
+		display: grid;
+		gap: 7px;
+		margin-top: 9px;
+		padding: 13px 14px;
+		border-left: 2px solid rgba(225, 233, 219, 0.32);
+		background: rgba(255, 255, 255, 0.018);
+		color: var(--muted);
+		font-size: 12px;
+		line-height: 1.55;
+	}
+	.step-science b {
+		color: var(--text);
+		font-size: 10px;
+		font-weight: 620;
+		letter-spacing: 0.04em;
 	}
 	.complete-step {
 		min-height: 44px;
@@ -1670,7 +1929,7 @@
 		overflow: auto;
 	}
 	.recipe-editor h3 {
-		margin: 24px 0 10px;
+		margin: 0;
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--muted);
@@ -1679,15 +1938,72 @@
 		display: grid;
 		gap: 7px;
 	}
-	.editor-list label {
+	.editor-section-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		margin: 24px 0 10px;
+	}
+	.editor-add {
+		min-height: 36px;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 0 10px;
+		border: 1px solid var(--line);
+		border-radius: 9px;
+		background: var(--surface-2);
+		color: var(--muted);
+		font-size: 11px;
+		cursor: pointer;
+	}
+	.editor-list-row {
 		display: grid;
-		grid-template-columns: 24px 1fr;
+		grid-template-columns: 24px minmax(0, 1fr) auto;
 		align-items: center;
 		gap: 8px;
 	}
-	.editor-list label span {
+	.editor-list-row > span {
 		color: var(--quiet);
 		font-size: 10px;
+		text-align: center;
+	}
+	.editor-order,
+	.editor-step-head {
+		display: flex;
+		align-items: center;
+	}
+	.editor-order {
+		gap: 2px;
+	}
+	.editor-order button {
+		width: 34px;
+		height: 34px;
+		display: grid;
+		place-items: center;
+		padding: 0;
+		border: 0;
+		border-radius: 8px;
+		background: transparent;
+		color: var(--quiet);
+		cursor: pointer;
+	}
+	.editor-order button:hover:not(:disabled) {
+		background: var(--surface-3);
+		color: var(--text);
+	}
+	.editor-order button:disabled {
+		opacity: 0.2;
+		cursor: default;
+	}
+	.editor-empty {
+		margin: 0;
+		padding: 12px;
+		border: 1px dashed var(--line);
+		border-radius: 10px;
+		color: var(--quiet);
+		font-size: 11px;
 		text-align: center;
 	}
 	.editor-steps {
@@ -1702,7 +2018,10 @@
 		border-radius: 13px;
 		background: rgba(255, 255, 255, 0.012);
 	}
-	.editor-steps section > b {
+	.editor-step-head {
+		justify-content: space-between;
+	}
+	.editor-step-head > b {
 		font-size: 10px;
 		color: var(--quiet);
 	}
@@ -1711,6 +2030,66 @@
 		padding: 11px;
 		resize: vertical;
 		line-height: 1.5;
+	}
+	.science-field {
+		display: grid;
+		gap: 7px;
+		margin-top: 3px;
+		color: var(--quiet);
+		font-size: 10px;
+	}
+	.history-modal {
+		width: min(620px, 100%);
+	}
+	.history-list {
+		display: grid;
+		gap: 7px;
+	}
+	.history-list > button {
+		min-height: 68px;
+		display: grid;
+		grid-template-columns: 95px minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 14px;
+		padding: 10px 13px;
+		border: 1px solid var(--line);
+		border-radius: 13px;
+		background: transparent;
+		color: var(--muted);
+		text-align: left;
+		cursor: pointer;
+	}
+	.history-list > button:hover,
+	.history-list > button.active {
+		background: var(--surface-2);
+		border-color: var(--line-strong);
+	}
+	.history-date,
+	.history-state {
+		color: var(--quiet);
+		font-size: 9px;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+	.history-copy {
+		min-width: 0;
+		display: grid;
+		gap: 5px;
+	}
+	.history-copy b {
+		overflow: hidden;
+		color: var(--text);
+		font-size: 13px;
+		font-weight: 560;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.history-copy small {
+		overflow: hidden;
+		color: var(--quiet);
+		font-size: 10px;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.form-grid.three {
 		grid-template-columns: 0.65fr 1fr 1.5fr;
@@ -1758,8 +2137,10 @@
 			display: none;
 		}
 		.recipe-edit {
-			width: 38px;
-			padding: 0;
+			min-width: 38px;
+		}
+		.recipe-actions .recipe-edit {
+			padding: 0 8px;
 			font-size: 0;
 			justify-content: center;
 		}
@@ -1785,6 +2166,19 @@
 		.prep-card,
 		.steps-card {
 			padding: 18px;
+		}
+		.editor-list-row {
+			grid-template-columns: 20px minmax(0, 1fr);
+		}
+		.editor-list-row .editor-order {
+			grid-column: 2;
+			justify-content: flex-end;
+		}
+		.history-list > button {
+			grid-template-columns: minmax(0, 1fr) auto;
+		}
+		.history-date {
+			grid-column: 1 / -1;
 		}
 		.finish-card {
 			grid-template-columns: 1fr;

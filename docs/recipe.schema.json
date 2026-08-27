@@ -1,0 +1,36 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://jeff.local/schemas/recipe.schema.json",
+	"title": "JeffRecipeInput",
+	"description": "Ein einfaches, geordnetes Rezeptformat für Menschen und Koch-Coaches.",
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["title", "servings", "learning_focus", "mise_en_place", "steps"],
+	"properties": {
+		"title": { "type": "string", "minLength": 1, "maxLength": 160 },
+		"cook_date": { "type": ["string", "null"], "format": "date" },
+		"servings": { "type": "integer", "minimum": 1, "maximum": 24 },
+		"learning_focus": { "type": "string", "maxLength": 200 },
+		"mise_en_place": {
+			"type": "array",
+			"items": { "type": "string", "minLength": 1, "maxLength": 300 }
+		},
+		"steps": {
+			"type": "array",
+			"minItems": 1,
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["title", "instruction", "goal", "science"],
+				"properties": {
+					"title": { "type": "string", "minLength": 1, "maxLength": 160 },
+					"instruction": { "type": "string", "minLength": 1 },
+					"duration": { "type": "string", "maxLength": 80 },
+					"temperature": { "type": "string", "maxLength": 120 },
+					"goal": { "type": "string", "minLength": 1, "maxLength": 300 },
+					"science": { "type": "string", "minLength": 1, "maxLength": 900 }
+				}
+			}
+		}
+	}
+}

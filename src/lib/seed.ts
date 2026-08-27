@@ -20,38 +20,43 @@ export function createSeedData(): AppData {
 			'Wasche den Reis in einer Schüssel drei- bis viermal mit kaltem Wasser: mit der Hand bewegen, trübes Wasser abgießen, wiederholen, bis es nur noch leicht milchig ist. Gut abtropfen lassen, dann mit 150 ml kaltem Wasser und einer kräftigen Prise Salz in den kleinsten Topf geben. Einmal offen aufkochen. Sobald die ganze Oberfläche blubbert, Deckel auflegen und sofort auf die kleinste Platte bei niedrigster Stufe ziehen. 11 Minuten nicht öffnen und nicht rühren. Platte ausschalten, weitere 5 Minuten geschlossen ruhen lassen; erst ganz am Ende mit einer Gabel auflockern.',
 			'16 Min.',
 			'Erst hoch, dann kleinste Hitze',
-			'Kein Wasser mehr sichtbar; Körner locker, nicht nass'
+			'Kein Wasser mehr sichtbar; Körner locker, nicht nass',
+			'Beim Waschen löst du lose Stärke von der Oberfläche, die den Reis sonst klebrig macht. Die Ruhephase verteilt Dampf und Restfeuchte gleichmäßig im Korn, ohne dass weitere direkte Hitze den Boden austrocknet.'
 		],
 		[
 			'Gurke und Karotte schnell säuern',
 			'Gib Gurke und Karotte in eine Schüssel. Presse zuerst eine halbe Limette darüber, gib zwei kleine Prisen Salz und optional eine winzige Prise Zucker dazu. Mische 20 Sekunden mit den Händen und drücke das Gemüse dabei nur leicht – es soll Geschmack annehmen, aber knackig bleiben. Probiere nach 3 Minuten: Es soll zuerst frisch-säuerlich, dann leicht salzig schmecken. Ist es nur sauer, fehlt eine Prise Salz; wirkt es flach, helfen wenige weitere Tropfen Limette. Lass das Gemüse stehen und gieße die entstandene Flüssigkeit erst direkt vor dem Anrichten ab.',
 			'5 Min.',
 			'Kalt, ohne Herd',
-			'Knackig und klar säuerlich, nicht weich oder wässrig'
+			'Knackig und klar säuerlich, nicht weich oder wässrig',
+			'Salz zieht durch Osmose etwas Wasser aus den Pflanzenzellen; Säure senkt den pH-Wert und macht den Geschmack heller. Kurzer Kontakt würzt die Oberfläche, bevor Zellwände stark abbauen und das Gemüse weich wird.'
 		],
 		[
 			'Rinderhack wirklich bräunen',
 			'Nimm die größte Pfanne und heize sie auf deiner stärkeren Platte 2–3 Minuten leer auf höchster Stufe vor. Die Pfanne ist bereit, wenn ein einzelner Wassertropfen sofort zischt und verdampft. Gib das trockene Hack in einer flachen Lage hinein und drücke es einmal an. Jetzt 2 Minuten überhaupt nicht bewegen: Nur so entsteht statt grauem, gekochtem Fleisch eine dunkle Kruste. Drehe große Stücke um und lasse sie weitere 60–90 Sekunden bräunen. Erst dann mit dem Pfannenwender grob zerteilen. Sammelt sich Wasser, breite das Fleisch weiter aus und warte mit allem anderen, bis die Flüssigkeit vollständig verkocht ist.',
 			'4–5 Min.',
 			'Höchste Stufe',
-			'Dunkelbraune Stellen und nussiger Duft; kein grauer Fleischsaft'
+			'Dunkelbraune Stellen und nussiger Duft; kein grauer Fleischsaft',
+			'Ab etwa 140 °C reagieren Aminosäuren und Zucker in der Maillard-Reaktion zu hunderten Röstaromen. Wasser hält die Oberfläche nahe 100 °C; deshalb sind trockene Oberfläche, Platz und ungestörter Pfannenkontakt entscheidend.'
 		],
 		[
 			'Aus dem Bratensatz eine Glasur bauen',
 			'Schiebe das gebräunte Fleisch an den Pfannenrand. Gib Ingwer und das Weiße der Frühlingszwiebeln auf die freie heiße Stelle und rühre dort nur 20–30 Sekunden, bis es duftet – Ingwer darf nicht dunkel werden. Gieße die Mischung aus Sojasauce und Wasser an den Pfannenrand. Sie soll sofort kräftig zischen. Löse mit dem Pfannenwender alle braunen Stellen vom Boden; genau dieser Bratensatz macht die Sauce tief und rund. Vermische alles und koche 30–60 Sekunden weiter, bis fast keine freie Flüssigkeit mehr da ist und jedes Fleischstück dünn glänzt. Pfanne vom Herd nehmen und erst jetzt 1–2 TL Limettensaft einrühren. Probiere: kräftig und glänzend, aber nicht salzig-suppig.',
 			'2 Min.',
 			'Mittel bis hoch, dann vom Herd',
-			'Dünne glänzende Schicht am Fleisch; Pfannenboden fast trocken'
+			'Dünne glänzende Schicht am Fleisch; Pfannenboden fast trocken',
+			'Wasser löst die konzentrierten Röststoffe vom Pfannenboden. Beim Einkochen verdampft es wieder, Aromen konzentrieren sich und die Sauce haftet als dünne Glasur. Limettensäure kommt erst ohne Hitze dazu, damit ihre flüchtigen frischen Aromen erhalten bleiben.'
 		],
 		[
 			'Die Bowl mit Kontrast anrichten',
 			'Lockere den Reis mit einer Gabel vom Rand zur Mitte auf, ohne ihn zu zerdrücken, und gib ihn auf eine Seite einer warmen Schale. Setze das glasierte Beef daneben statt darüber, damit der Reis locker bleibt. Gieße die Gurken-Karotten-Flüssigkeit ab und lege das Gemüse als kühlen, knackigen Gegenpol in die freie Ecke. Streue Sesam und das grüne Frühlingszwiebelgrün gezielt über das Fleisch. Gib zum Schluss einen kleinen Limettenschnitz dazu. Nimm den ersten Bissen mit Reis, Beef und Gemüse zusammen; fehlt Frische, presse erst dann noch etwas Limette darüber.',
 			'2 Min.',
 			'Ohne Hitze',
-			'Warm, kühl, weich und knackig in jedem zusammengesetzten Bissen'
+			'Warm, kühl, weich und knackig in jedem zusammengesetzten Bissen',
+			'Kontraste in Temperatur und Textur werden sensorisch stärker wahrgenommen als gleichförmige Komponenten. Säure regt den Speichelfluss an und balanciert Fett und Salz; getrenntes Anrichten erhält diese Unterschiede bis zum ersten Bissen.'
 		]
 	];
-	const steps = stepData.map(([title, instruction, duration, temperature, goal], position) => ({
+	const steps = stepData.map(([title, instruction, duration, temperature, goal, science], position) => ({
 		id: id(),
 		recipeId,
 		position,
@@ -59,7 +64,8 @@ export function createSeedData(): AppData {
 		instruction,
 		duration,
 		temperature,
-		goal
+		goal,
+		science
 	}));
 	const inventorySeed: Array<
 		[string, 'exact' | 'basic', number | null, string, Location, BasicStatus, string?]
@@ -124,6 +130,15 @@ export function createSeedData(): AppData {
 			position,
 			isChecked: false
 		})),
-		inventory
+		inventory,
+		recipeHistory: [
+			{
+				id: recipeId,
+				title: 'Ginger-Beef-Rice-Bowl',
+				cookDate: new Date().toISOString().slice(0, 10),
+				learningFocus: 'Pfannenglasur und schnelle Säure',
+				completedAt: null
+			}
+		]
 	};
 }

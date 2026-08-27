@@ -47,8 +47,11 @@ create table if not exists public.recipe_steps (
   id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id) on delete cascade,
   recipe_id uuid not null references public.recipes(id) on delete cascade, position integer not null default 0,
   title text not null check (char_length(trim(title)) > 0), instruction text not null,
-  duration text, temperature text, goal text, created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+  duration text, temperature text, goal text, science text, created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
+
+-- Macht das Schema auch bei bereits bestehenden Jeff-Projekten aktualisierbar.
+alter table public.recipe_steps add column if not exists science text;
 
 create table if not exists public.cooking_sessions (
   id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id) on delete cascade,

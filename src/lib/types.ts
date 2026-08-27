@@ -25,6 +25,7 @@ export type RecipeStep = {
 	duration?: string;
 	temperature?: string;
 	goal?: string;
+	science?: string;
 };
 export type Recipe = {
 	id: string;
@@ -34,6 +35,13 @@ export type Recipe = {
 	learningFocus: string;
 	prepItems: PrepItem[];
 	steps: RecipeStep[];
+};
+export type RecipeHistoryItem = {
+	id: string;
+	title: string;
+	cookDate: string;
+	learningFocus: string;
+	completedAt: string | null;
 };
 export type CookingSession = {
 	id: string;
@@ -72,4 +80,5 @@ export type AppData = {
 	shoppingList: ShoppingList;
 	shoppingItems: ShoppingItem[];
 	inventory: InventoryItem[];
+	recipeHistory: RecipeHistoryItem[];
 };

@@ -7,6 +7,7 @@ Technik: SvelteKit 5 · TypeScript · Supabase Auth/Postgres/RLS · Vercel.
 ## Was bereits funktioniert
 
 - **Kochen:** editierbares Tagesrezept, ausführlich coachende Schritte, Mise-en-Place- und Schritt-Fortschritt, Lernfokus, Notiz und Kochabschluss.
+- **Historie:** frühere Rezepte chronologisch wiederfinden und samt gespeichertem Kochstand öffnen.
 - **Einkaufen:** feste Abteilungsreihenfolge, antippbare Checkboxen, Hinzufügen, Bearbeiten, Löschen und Reaktivieren.
 - **Vorrat:** Suche und Lagerortfilter; entweder genaue Menge oder nur `vorhanden / wenig / leer`; Mengen reduzieren; Artikel direkt auf die Einkaufsliste setzen; Verbrauchsdaten sind optional und werden dezent markiert.
 - **Persistenz:** ohne Konfiguration lokal im Browser; mit Supabase nutzergebunden und geräteübergreifend.
@@ -98,6 +99,8 @@ Spätere Änderungen werden nach `git push` automatisch neu deployed.
 Die Oberfläche arbeitet über eine kleine Repository-Schicht in `src/lib/repository.ts`. Heute kann ein Mensch alles direkt editieren. Eine spätere Koch-Coach-Anbindung kann dieselben Supabase-Tabellen befüllen: Der Coach liest den nutzergebundenen Vorrat, schreibt ein detailliertes Rezept oder aktualisiert die aktuelle Einkaufsliste, und Jeff zeigt das Ergebnis sofort auf allen Geräten.
 
 Die verbindlichen Regeln für diese spätere Anbindung – inklusive Schrittqualität, spontanem Abendmodus, Wocheneinkauf und einfacher Vorratslogik – stehen in [`docs/coach-contract.md`](docs/coach-contract.md).
+
+Das bewusst kleine KI-Eingabeformat ist als JSON Schema in [`docs/recipe.schema.json`](docs/recipe.schema.json) definiert. Ein Rezept enthält geordnete Arrays statt einer fest eingebauten Schrittzahl. Jeder Schritt trennt Handlung, sichtbares Ziel und eine kurze wissenschaftliche Erklärung. Der Kochfortschritt bleibt als eigene Session vom Rezeptinhalt getrennt.
 
 Für diese spätere Anbindung gehört ein geheimer KI- oder Service-Schlüssel ausschließlich in eine geschützte serverseitige Funktion (zum Beispiel eine Supabase Edge Function oder Vercel Function). Er darf niemals in eine `PUBLIC_*`-Variable oder den Browser gelangen. Version 1 enthält absichtlich noch keine KI-API und keinen Chat.
 

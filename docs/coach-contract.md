@@ -10,6 +10,10 @@ Dieses Dokument beschreibt die fachliche Schnittstelle für eine spätere KI-Anb
 4. Rezept, Mise en Place und Schritte als neue Datensätze speichern; Koch-Session und Notiz leer anlegen.
 5. Jeff lädt das neueste Rezept und zeigt es sofort als Kochmodus.
 
+Das verbindliche, maschinenlesbare Eingabeformat steht in [`recipe.schema.json`](recipe.schema.json). Die Arrays dürfen beliebig viele Mise-en-Place-Punkte und Kochschritte enthalten. Ihre Reihenfolge ist die spätere Anzeigereihenfolge; technische IDs, `user_id` und Positionswerte erzeugt die geschützte Serverfunktion.
+
+Die angefragte Personenzahl ist Teil des Auftrags an den Coach. Der Coach berechnet vor dem Speichern alle Mengen und die praktische Kochlogik passend für genau diese Portionenzahl. Jeff zeigt `servings` anschließend nur an und skaliert keine Zahlen aus freiem Text nachträglich. Insbesondere Zeiten, Hitze, Salz und benötigte Pfannenfläche dürfen nicht blind proportional verändert werden.
+
 ## Einkaufsmodus: „Was kaufen wir für die Woche?“
 
 1. Vorrat lesen und leere oder knappe Basics berücksichtigen.
@@ -28,10 +32,20 @@ Ein Schritt ist kein Titel mit Alibitext. `instruction` muss so konkret sein, da
 - ein hör-, riech- oder sichtbares Signal für den richtigen Moment;
 - das Kernziel der Technik;
 - eine kurze Korrektur für den wahrscheinlichsten Fehler.
+- eine kurze Erklärung in `science`, welche relevante chemische, biochemische oder physikalische Logik den Arbeitsschritt wirksam macht.
 
 Beispiel: Nicht nur „Hack braten“, sondern Pfanne vorheizen, Fleisch flach einlegen, zunächst nicht bewegen, gewünschte Bräunung beschreiben und erklären, was bei austretendem Wasser zu tun ist.
 
 Die Erklärung bleibt handlungsnah. Keine Küchengeschichte, keine langen Exkurse, keine Nährwertabsätze und kein dekoratives Storytelling.
+
+Jeff trennt dabei bewusst drei Ebenen: `instruction` sagt exakt, was zu tun ist; `goal` beschreibt das prüfbare Ergebnis; `science` erklärt knapp, warum die Methode funktioniert. Die Wissenschaft muss korrekt, in Alltagssprache und unmittelbar nützlich sein. Fachbegriffe wie Maillard-Reaktion, Osmose oder Emulsion dürfen vorkommen, werden aber im selben Satz verständlich gemacht.
+
+## Modulare Anzeige und Fortschritt
+
+- Ein Rezept ist reiner Inhalt und kann aus vier, fünf, sechs oder beliebig vielen Schritten bestehen.
+- Jeff rendert die Arrays, ohne eine feste Schrittzahl vorauszusetzen.
+- Der Kochfortschritt gehört nicht in das Rezept. Eine eigene `cooking_session` speichert erledigte Vorbereitungspunkte und Schritte anhand ihrer IDs.
+- Dadurch kann dieselbe Rezeptstruktur später von einem Menschen oder einer KI geschrieben und auf mehreren Geräten konsistent weitergekocht werden.
 
 ## Vorratsregeln
 
