@@ -93,6 +93,18 @@
 				repository = new SupabaseRepository(supabase, auth.user.id);
 			}
 			data = await repository.load();
+			// Repariert ältere Stände, bei denen nach dem Checkout noch keine neue Liste angelegt wurde.
+			if (data.shoppingList.checkedOutAt) {
+				const today = new Date().toISOString().slice(0, 10);
+				await repository.createShoppingList({
+					id: crypto.randomUUID(),
+					title: 'Nächster Einkauf',
+					startDate: today,
+					endDate: '',
+					checkedOutAt: null
+				});
+				data = await repository.load();
+			}
 		} catch (reason) {
 			error = reason instanceof Error ? reason.message : 'Jeff konnte die Daten nicht laden.';
 		} finally {
