@@ -42,6 +42,7 @@
 	let inventoryLocation = $state('Alle Orte');
 	let editingInventory = $state<InventoryItem | null>(null);
 	let editingShopping = $state<ShoppingItem | null>(null);
+	let quickShoppingText = $state('');
 	let summaryOpen = $state(false);
 	let expandedStepId = $state<string | null>(null);
 	let prepCollapsed = $state(false);
@@ -326,6 +327,29 @@
 						: 'Vorratsschrank',
 			rememberForNext: false
 		};
+	}
+	async function quickAddShoppingItem() {
+		if (!data || data.shoppingList.checkedOutAt || !quickShoppingText.trim()) return;
+		const text = quickShoppingText.trim();
+		quickShoppingText = '';
+		const item: ShoppingItem = {
+			id: crypto.randomUUID(),
+			listId: data.shoppingList.id,
+			name: text,
+			quantity: '',
+			note: 'Schnell ergänzt',
+			category: 'Küchenabteilung',
+			position: data.shoppingItems.length,
+			isChecked: false,
+			addedToInventory: false,
+			inventoryTrackingType: 'basic',
+			inventoryQuantity: null,
+			inventoryUnit: '',
+			inventoryLocation: 'Vorratsschrank',
+			rememberForNext: false
+		};
+		data.shoppingItems.push(item);
+		await persist(() => repository.saveShoppingItem(item));
 	}
 	async function saveShoppingItem() {
 		if (!data || !editingShopping || !editingShopping.name.trim()) return;
@@ -663,6 +687,10 @@
 							>{/if}
 					</div>
 				</section>
+				{#if !data.shoppingList.checkedOutAt}<form class="quick-add" onsubmit={(event) => { event.preventDefault(); void quickAddShoppingItem(); }}>
+					<input aria-label="Schnell zur Einkaufsliste hinzufügen" bind:value={quickShoppingText} placeholder="Diktieren oder eintippen …" />
+					<button class="quiet-button" type="submit" disabled={!quickShoppingText.trim()}><Plus size={16} /> Schnell ergänzen</button>
+				</form>{/if}
 				<section class="shopping-card card">
 					{#each SHOPPING_CATEGORIES as category, categoryIndex}{@const items = data.shoppingItems
 							.filter((item) => item.category === category)
@@ -1811,6 +1839,22 @@
 		padding-left: 8px;
 		color: var(--quiet);
 	}
+	.quick-add {
+		display: flex;
+		gap: 8px;
+		margin: -18px 0 14px;
+		padding: 0 2px;
+	}
+	.quick-add input {
+		min-width: 0;
+		flex: 1;
+		min-height: 44px;
+		padding: 0 14px;
+		background: var(--surface-2);
+	}
+	.quick-add button {
+		white-space: nowrap;
+	}
 	.shopping-card {
 		padding: 7px 25px;
 	}
@@ -2609,6 +2653,13 @@
 		}
 		.shopping-actions > button {
 			flex: 1;
+		}
+		.quick-add {
+			margin: -8px 0 12px;
+			padding: 0;
+		}
+		.quick-add button {
+			padding: 0 12px;
 		}
 		.shopping-card {
 			padding: 4px 17px;
