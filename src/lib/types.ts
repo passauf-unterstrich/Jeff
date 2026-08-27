@@ -14,6 +14,7 @@ export type ShoppingCategory = (typeof SHOPPING_CATEGORIES)[number];
 export type Location = (typeof LOCATIONS)[number];
 export type TrackingType = 'exact' | 'basic';
 export type BasicStatus = 'vorhanden' | 'wenig' | 'leer';
+export type RecipeStatus = 'active' | 'archived' | 'completed';
 
 export type PrepItem = { id: string; recipeId: string; position: number; text: string };
 export type RecipeStep = {
@@ -43,6 +44,7 @@ export type Recipe = {
 	servings: number;
 	learningFocus: string;
 	isFavorite: boolean;
+	status: RecipeStatus;
 	prepItems: PrepItem[];
 	steps: RecipeStep[];
 	consumptions: RecipeConsumption[];
@@ -54,6 +56,7 @@ export type RecipeHistoryItem = {
 	learningFocus: string;
 	completedAt: string | null;
 	isFavorite: boolean;
+	status: RecipeStatus;
 };
 export type CookingSession = {
 	id: string;
@@ -105,4 +108,6 @@ export type AppData = {
 	shoppingItems: ShoppingItem[];
 	inventory: InventoryItem[];
 	recipeHistory: RecipeHistoryItem[];
+	recipeArchive: RecipeHistoryItem[];
+	hasActiveRecipe: boolean;
 };

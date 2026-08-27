@@ -7,7 +7,8 @@ Technik: SvelteKit 5 · TypeScript · Supabase Auth/Postgres/RLS · Vercel.
 ## Was bereits funktioniert
 
 - **Kochen:** editierbares Tagesrezept, ausführlich coachende Schritte, Mise-en-Place- und Schritt-Fortschritt, Lernfokus, Notiz und Kochabschluss.
-- **Historie:** frühere Rezepte chronologisch wiederfinden und samt gespeichertem Kochstand öffnen.
+- **Historie:** ausschließlich tatsächlich gekochte Rezepte chronologisch wiederfinden und favorisieren.
+- **Kochboard & Archiv:** Es gibt höchstens ein offenes Rezept. Abgebrochene oder durch neue KI-Rezepte ersetzte Vorschläge landen ohne Vorratsänderung im Archiv; „Doch gekocht“ ist dort weiterhin möglich.
 - **Einkaufen:** feste Abteilungsreihenfolge, antippbare Checkboxen, Hinzufügen, Bearbeiten, Löschen und Reaktivieren.
 - **Checkout:** Nur tatsächlich abgehakte Einkäufe gelangen in den Vorrat; offene Punkte lassen sich gezielt für die nächste KI-Liste merken.
 - **Kochabschluss:** Exakt verfolgte Hauptzutaten werden erst beim tatsächlichen Abschluss einmalig abgezogen; Favoriten bleiben zusätzlich markiert.

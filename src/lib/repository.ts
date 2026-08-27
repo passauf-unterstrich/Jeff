@@ -22,6 +22,8 @@ export interface Repository {
 	deleteInventoryItem(id: string): Promise<void>;
 	checkoutShoppingList(id: string): Promise<void>;
 	completeCooking(sessionId: string): Promise<void>;
+	archiveRecipe(id: string): Promise<void>;
+	completeRecipe(id: string): Promise<void>;
 }
 
 const STORAGE_KEY = 'jeff-demo-data-v4';
@@ -38,6 +40,7 @@ export class DemoRepository implements Repository {
 			science: step.science || fresh.recipe.steps[index]?.science || ''
 		}));
 		this.data.recipe.isFavorite ??= false;
+		this.data.recipe.status ??= this.data.session.completedAt ? 'completed' : 'active';
 		this.data.recipe.consumptions ??= fresh.recipe.consumptions;
 		this.data.shoppingList.checkedOutAt ??= null;
 		const freshShopping = new Map(fresh.shoppingItems.map((item) => [item.name.toLowerCase(), item]));
@@ -53,18 +56,27 @@ export class DemoRepository implements Repository {
 				rememberForNext: item.rememberForNext ?? false
 			};
 		});
-		this.data.recipeHistory = this.data.recipeHistory?.length
-			? this.data.recipeHistory.map((item) => ({ ...item, isFavorite: item.isFavorite ?? false }))
-			: [
-					{
-						id: this.data.recipe.id,
-						title: this.data.recipe.title,
-						cookDate: this.data.recipe.cookDate,
-						learningFocus: this.data.recipe.learningFocus,
-						completedAt: this.data.session.completedAt,
-						isFavorite: this.data.recipe.isFavorite
-					}
-				];
+		const currentSummary = {
+			id: this.data.recipe.id,
+			title: this.data.recipe.title,
+			cookDate: this.data.recipe.cookDate,
+			learningFocus: this.data.recipe.learningFocus,
+			completedAt: this.data.session.completedAt,
+			isFavorite: this.data.recipe.isFavorite,
+			status: this.data.recipe.status
+		};
+		this.data.recipeHistory =
+			this.data.recipe.status === 'completed'
+				? [currentSummary]
+				: (this.data.recipeHistory ?? [])
+						.filter((item) => item.completedAt)
+						.map((item) => ({
+							...item,
+							isFavorite: item.isFavorite ?? false,
+							status: 'completed'
+						}));
+		this.data.recipeArchive = this.data.recipe.status === 'archived' ? [currentSummary] : [];
+		this.data.hasActiveRecipe = this.data.recipe.status === 'active';
 		if (recipeId && recipeId !== this.data.recipe.id) throw new Error('Rezept nicht gefunden.');
 		this.flush();
 		return clone(this.data);
@@ -81,6 +93,8 @@ export class DemoRepository implements Repository {
 			historyItem.learningFocus = value.learningFocus;
 			historyItem.isFavorite = value.isFavorite;
 		}
+		const archiveItem = this.data.recipeArchive.find((item) => item.id === value.id);
+		if (archiveItem) archiveItem.isFavorite = value.isFavorite;
 		this.flush();
 	}
 	async saveSession(value: CookingSession) {
@@ -164,9 +178,42 @@ export class DemoRepository implements Repository {
 			existing.status = existing.quantity === 0 ? 'leer' : 'vorhanden';
 		}
 		this.data.session.completedAt = new Date().toISOString();
-		const historyItem = this.data.recipeHistory.find((item) => item.id === this.data.recipe.id);
-		if (historyItem) historyItem.completedAt = this.data.session.completedAt;
+		this.data.recipe.status = 'completed';
+		this.data.hasActiveRecipe = false;
+		this.data.recipeArchive = [];
+		this.data.recipeHistory = [
+			{
+				id: this.data.recipe.id,
+				title: this.data.recipe.title,
+				cookDate: this.data.recipe.cookDate,
+				learningFocus: this.data.recipe.learningFocus,
+				completedAt: this.data.session.completedAt,
+				isFavorite: this.data.recipe.isFavorite,
+				status: 'completed'
+			}
+		];
 		this.flush();
+	}
+	async archiveRecipe(id: string) {
+		if (this.data.recipe.id !== id || this.data.recipe.status !== 'active') return;
+		this.data.recipe.status = 'archived';
+		this.data.hasActiveRecipe = false;
+		this.data.recipeArchive = [
+			{
+				id: this.data.recipe.id,
+				title: this.data.recipe.title,
+				cookDate: this.data.recipe.cookDate,
+				learningFocus: this.data.recipe.learningFocus,
+				completedAt: null,
+				isFavorite: this.data.recipe.isFavorite,
+				status: 'archived'
+			}
+		];
+		this.flush();
+	}
+	async completeRecipe(id: string) {
+		if (this.data.recipe.id !== id) throw new Error('Rezept nicht gefunden.');
+		await this.completeCooking(this.data.session.id);
 	}
 }
 
@@ -182,9 +229,21 @@ export class SupabaseRepository implements Repository {
 
 	async load(recipeId?: string): Promise<AppData> {
 		const recipeQuery = this.client.from('recipes').select('*');
-		const recipeResult = recipeId
+		let recipeResult = recipeId
 			? await recipeQuery.eq('id', recipeId).maybeSingle()
-			: await recipeQuery.order('cook_date', { ascending: false }).limit(1).maybeSingle();
+			: await recipeQuery
+					.eq('status', 'active')
+					.order('created_at', { ascending: false })
+					.limit(1)
+					.maybeSingle();
+		if (!recipeId && !recipeResult.data && !recipeResult.error) {
+			recipeResult = await this.client
+				.from('recipes')
+				.select('*')
+				.order('created_at', { ascending: false })
+				.limit(1)
+				.maybeSingle();
+		}
 		const { data: recipeRow, error } = recipeResult;
 		check(error);
 		if (!recipeRow) {
@@ -208,7 +267,7 @@ export class SupabaseRepository implements Repository {
 				this.client.from('inventory_items').select('*').order('name'),
 				this.client
 					.from('recipes')
-					.select('id,title,cook_date,learning_focus,is_favorite')
+					.select('id,title,cook_date,learning_focus,is_favorite,status')
 					.order('cook_date', { ascending: false }),
 				this.client
 					.from('cooking_sessions')
@@ -249,6 +308,7 @@ export class SupabaseRepository implements Repository {
 				servings: recipeRow.servings,
 				learningFocus: recipeRow.learning_focus ?? '',
 				isFavorite: recipeRow.is_favorite ?? false,
+				status: recipeRow.status,
 				prepItems: prep.data!.map((r) => ({
 					id: r.id,
 					recipeId: r.recipe_id,
@@ -318,14 +378,29 @@ export class SupabaseRepository implements Repository {
 				bestBefore: r.best_before ?? '',
 				note: r.note ?? ''
 			})),
-			recipeHistory: (historyRows.data ?? []).map((row) => ({
-				id: row.id,
-				title: row.title,
-				cookDate: row.cook_date ?? '',
-				learningFocus: row.learning_focus ?? '',
-				completedAt: completionByRecipe.get(row.id) ?? null,
-				isFavorite: row.is_favorite ?? false
-			}))
+			recipeHistory: (historyRows.data ?? [])
+				.filter((row) => row.status === 'completed')
+				.map((row) => ({
+					id: row.id,
+					title: row.title,
+					cookDate: row.cook_date ?? '',
+					learningFocus: row.learning_focus ?? '',
+					completedAt: completionByRecipe.get(row.id) ?? null,
+					isFavorite: row.is_favorite ?? false,
+					status: row.status
+				})),
+			recipeArchive: (historyRows.data ?? [])
+				.filter((row) => row.status === 'archived')
+				.map((row) => ({
+					id: row.id,
+					title: row.title,
+					cookDate: row.cook_date ?? '',
+					learningFocus: row.learning_focus ?? '',
+					completedAt: null,
+					isFavorite: row.is_favorite ?? false,
+					status: row.status
+				})),
+			hasActiveRecipe: recipeRow.status === 'active'
 		};
 	}
 
@@ -340,7 +415,8 @@ export class SupabaseRepository implements Repository {
 					cook_date: d.recipe.cookDate,
 					servings: d.recipe.servings,
 					learning_focus: d.recipe.learningFocus,
-					is_favorite: d.recipe.isFavorite
+					is_favorite: d.recipe.isFavorite,
+					status: d.recipe.status
 				})
 			).error
 		);
@@ -472,7 +548,8 @@ export class SupabaseRepository implements Repository {
 						cook_date: v.cookDate || null,
 						servings: v.servings,
 						learning_focus: v.learningFocus,
-						is_favorite: v.isFavorite
+						is_favorite: v.isFavorite,
+						status: v.status
 					})
 					.eq('id', v.id)
 			).error
@@ -643,5 +720,29 @@ export class SupabaseRepository implements Repository {
 	}
 	async completeCooking(sessionId: string) {
 		check((await this.client.rpc('complete_cooking_session', { p_session_id: sessionId })).error);
+	}
+	async archiveRecipe(id: string) {
+		check(
+			(
+				await this.client
+					.from('recipes')
+					.update({ status: 'archived', archived_at: new Date().toISOString() })
+					.eq('id', id)
+					.eq('status', 'active')
+			).error
+		);
+	}
+	async completeRecipe(id: string) {
+		const session = await this.client
+			.from('cooking_sessions')
+			.select('id')
+			.eq('recipe_id', id)
+			.is('completed_at', null)
+			.order('created_at', { ascending: false })
+			.limit(1)
+			.maybeSingle();
+		check(session.error);
+		if (!session.data) throw new Error('Keine offene Koch-Session gefunden.');
+		await this.completeCooking(session.data.id);
 	}
 }

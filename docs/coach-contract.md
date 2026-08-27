@@ -17,6 +17,8 @@ Die KI plant; nur eine ausdrückliche Handlung des Menschen bestätigt die Reali
 5. Jeff lädt das neueste Rezept und zeigt es sofort als Kochmodus.
 6. Für exakt verfolgte Hauptzutaten `stock_consumptions` mitschreiben. Gewürze und einfache Basics gehören nicht in diese Abzugsliste.
 
+Jeder neue KI-Upload wird als neues Rezept mit Status `active` angelegt. Ein bereits offenes Rezept darf niemals überschrieben werden: Die Datenbank verschiebt es automatisch nach `archived`. Dabei entsteht kein Verbrauch. Pro Nutzer existiert höchstens ein aktives Rezept.
+
 Das verbindliche, maschinenlesbare Eingabeformat steht in [`recipe.schema.json`](recipe.schema.json). Die Arrays dürfen beliebig viele Mise-en-Place-Punkte und Kochschritte enthalten. Ihre Reihenfolge ist die spätere Anzeigereihenfolge; technische IDs, `user_id` und Positionswerte erzeugt die geschützte Serverfunktion.
 
 Die angefragte Personenzahl ist Teil des Auftrags an den Coach. Der Coach berechnet vor dem Speichern alle Mengen und die praktische Kochlogik passend für genau diese Portionenzahl. Jeff zeigt `servings` anschließend nur an und skaliert keine Zahlen aus freiem Text nachträglich. Insbesondere Zeiten, Hitze, Salz und benötigte Pfannenfläche dürfen nicht blind proportional verändert werden.
@@ -49,6 +51,16 @@ Das verbindliche Format steht in [`shopping-list.schema.json`](shopping-list.sch
 4. Basics und Gewürze werden nicht automatisch verbraucht. Meldet der Nutzer dem Coach, dass etwas leer ist, wird lediglich dessen Status aktualisiert.
 5. Favorisieren ist eine zusätzliche persönliche Markierung und unabhängig von der normalen Historie.
 6. Checkout und Kochabschluss sind idempotent: Wiederholtes Antippen darf Bestände nie doppelt verändern.
+
+## Abbruch, leeres Board und Archiv
+
+- `active`: Das eine Rezept, das gerade auf dem Kochboard liegt.
+- `archived`: Nicht gekocht, manuell abgebrochen oder durch einen neueren KI-Upload ersetzt. Kein Vorratsabzug und kein Eintrag in „Gekocht“.
+- `completed`: Ausdrücklich als gekocht bestätigt. Verbrauch wurde einmalig gebucht und das Rezept erscheint in der normalen Historie.
+
+„Rezept abbrechen“ setzt das aktuelle Rezept auf `archived` und räumt das Kochboard leer. Ein leerer Zustand ist normal und signalisiert, dass der Coach ein neues Rezept einstellen kann.
+
+Im Archiv darf der Nutzer „Doch gekocht“ wählen. Vor der Buchung verlangt Jeff eine zweite Bestätigung. Danach wird dieselbe idempotente Verbrauchsfunktion wie beim normalen Kochabschluss ausgeführt und das Rezept nach `completed` verschoben. Ein Coach darf ein archiviertes Rezept nie selbstständig als gekocht markieren.
 
 ## Pflichtqualität jedes Kochschritts
 

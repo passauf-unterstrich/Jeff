@@ -39,6 +39,7 @@ create table if not exists public.recipes (
   id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id) on delete cascade,
   title text not null check (char_length(trim(title)) > 0), cook_date date, servings smallint not null default 1 check (servings between 1 and 24),
   learning_focus text, is_favorite boolean not null default false,
+  status text not null default 'active' check (status in ('active','archived','completed')), archived_at timestamptz,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
 
@@ -50,6 +51,8 @@ alter table public.shopping_items add column if not exists inventory_unit text n
 alter table public.shopping_items add column if not exists inventory_location text not null default 'Vorratsschrank' check (inventory_location in ('Kühlschrank','Gefrierfach','Vorratsschrank','Arbeitsfläche'));
 alter table public.shopping_items add column if not exists remember_for_next boolean not null default false;
 alter table public.recipes add column if not exists is_favorite boolean not null default false;
+alter table public.recipes add column if not exists status text not null default 'active' check (status in ('active','archived','completed'));
+alter table public.recipes add column if not exists archived_at timestamptz;
 
 create table if not exists public.recipe_prep_items (
   id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id) on delete cascade,
@@ -96,6 +99,27 @@ create index if not exists recipe_steps_recipe_idx on public.recipe_steps(recipe
 create index if not exists recipe_consumptions_recipe_idx on public.recipe_consumptions(recipe_id, position);
 create index if not exists sessions_recipe_idx on public.cooking_sessions(recipe_id, created_at desc);
 
+update public.recipes r set status = 'completed'
+where exists (select 1 from public.cooking_sessions s where s.recipe_id = r.id and s.completed_at is not null);
+
+with open_recipes as (
+  select id, row_number() over (partition by user_id order by created_at desc) as position
+  from public.recipes where status = 'active'
+)
+update public.recipes r set status = 'archived', archived_at = coalesce(archived_at, now())
+from open_recipes o where r.id = o.id and o.position > 1;
+
+create unique index if not exists recipes_one_active_per_user_idx on public.recipes(user_id) where status = 'active';
+
+do $$ begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'recipes') then
+    alter publication supabase_realtime add table public.recipes;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'shopping_lists') then
+    alter publication supabase_realtime add table public.shopping_lists;
+  end if;
+end $$;
+
 create or replace function public.set_updated_at() returns trigger language plpgsql as $$
 begin new.updated_at = now(); return new; end; $$;
 
@@ -110,6 +134,22 @@ create or replace function public.handle_new_user() returns trigger language plp
 begin insert into public.profiles (id, display_name) values (new.id, coalesce(new.raw_user_meta_data->>'display_name', split_part(new.email, '@', 1))) on conflict do nothing; return new; end; $$;
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users for each row execute procedure public.handle_new_user();
+
+create or replace function public.archive_previous_active_recipe() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.status = 'active' then
+    update public.recipes
+      set status = 'archived', archived_at = now()
+      where user_id = new.user_id and status = 'active' and id <> new.id;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists archive_previous_active_recipe on public.recipes;
+create trigger archive_previous_active_recipe
+before insert or update of status on public.recipes
+for each row execute function public.archive_previous_active_recipe();
 
 alter table public.profiles enable row level security;
 alter table public.inventory_items enable row level security;
@@ -211,6 +251,8 @@ begin
   end loop;
 
   update public.cooking_sessions set completed_at = now() where id = p_session_id and user_id = auth.uid();
+  update public.recipes set status = 'completed', archived_at = null
+    where id = recipe_to_finish and user_id = auth.uid();
 end $$;
 
 revoke all on all tables in schema public from anon;

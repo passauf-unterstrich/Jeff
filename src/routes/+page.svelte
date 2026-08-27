@@ -26,6 +26,7 @@
 		type AppData,
 		type InventoryItem,
 		type Recipe,
+		type RecipeHistoryItem,
 		type ShoppingItem
 	} from '$lib/types';
 
@@ -47,6 +48,8 @@
 	let editingRecipe = $state<Recipe | null>(null);
 	let historyOpen = $state(false);
 	let checkoutReviewOpen = $state(false);
+	let historyView = $state<'cooked' | 'archive'>('cooked');
+	let archiveCompletion = $state<RecipeHistoryItem | null>(null);
 	let authEmail = $state('');
 	const demoMode = !supabaseConfigured();
 	const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -70,6 +73,9 @@
 					(item) => item.status === 'wenig' || item.status === 'leer' || item.quantity === 0
 				).length
 			: 0
+	);
+	const visibleHistory = $derived(
+		data ? (historyView === 'cooked' ? data.recipeHistory : data.recipeArchive) : []
 	);
 
 	onMount(async () => {
@@ -103,9 +109,33 @@
 			summaryOpen = false;
 			historyOpen = false;
 			checkoutReviewOpen = false;
+			archiveCompletion = null;
 		};
 		window.addEventListener('keydown', closeOverlay);
 		return () => window.removeEventListener('keydown', closeOverlay);
+	});
+
+	onMount(() => {
+		if (demoMode) return;
+		const supabase = getSupabase();
+		const refresh = async () => {
+			if (!repository) return;
+			try {
+				data = await repository.load();
+				expandedStepId = null;
+				prepCollapsed = false;
+			} catch (reason) {
+				error = reason instanceof Error ? reason.message : 'Neue Jeff-Daten konnten nicht geladen werden.';
+			}
+		};
+		const channel = supabase
+			.channel('jeff-current-workspace')
+			.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'recipes' }, refresh)
+			.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'shopping_lists' }, refresh)
+			.subscribe();
+		return () => {
+			void supabase.removeChannel(channel);
+		};
 	});
 
 	async function persist(action: () => Promise<void>) {
@@ -160,24 +190,6 @@
 			new Date(`${value}T12:00:00`)
 		);
 	}
-	async function openHistoryRecipe(id: string) {
-		if (!data || id === data.recipe.id) {
-			historyOpen = false;
-			return;
-		}
-		loading = true;
-		historyOpen = false;
-		try {
-			data = await repository.load(id);
-			expandedStepId = null;
-			prepCollapsed = false;
-			error = '';
-		} catch (reason) {
-			error = reason instanceof Error ? reason.message : 'Rezept konnte nicht geöffnet werden.';
-		} finally {
-			loading = false;
-		}
-	}
 	async function finishCooking() {
 		if (!data) return;
 		if (data.session.completedAt) {
@@ -190,6 +202,25 @@
 			data = await repository.load(data!.recipe.id);
 		});
 		summaryOpen = true;
+	}
+	async function archiveCurrentRecipe() {
+		if (!data || !data.hasActiveRecipe) return;
+		await persist(async () => {
+			await repository.archiveRecipe(data!.recipe.id);
+			data = await repository.load();
+		});
+		expandedStepId = null;
+		prepCollapsed = false;
+	}
+	async function confirmArchivedCompletion() {
+		if (!data || !archiveCompletion) return;
+		const recipeId = archiveCompletion.id;
+		await persist(async () => {
+			await repository.completeRecipe(recipeId);
+			data = await repository.load();
+		});
+		archiveCompletion = null;
+		historyView = 'cooked';
 	}
 	function toggleFavorite() {
 		if (!data) return;
@@ -441,148 +472,171 @@
 		</main>
 	{:else if data}
 		{#if bereich === 'kochen'}
-			<main class="cook">
-				<section class="hero">
-					<div class="recipe-meta">
-						<input
-							aria-label="Kochdatum"
-							type="date"
-							bind:value={data.recipe.cookDate}
-							onblur={() => persist(() => repository.saveRecipe(data!.recipe))}
-						/><span class="servings"
-							>{data.recipe.servings} {data.recipe.servings === 1 ? 'PORTION' : 'PORTIONEN'}</span
-						>
-					</div>
-					<textarea
-						class="recipe-title"
-						rows="1"
-						aria-label="Gerichtstitel"
-						bind:value={data.recipe.title}
-						onblur={() => persist(() => repository.saveRecipe(data!.recipe))}
-					></textarea>
-					<div class="focus-row">
-						<label class="focus"
-							>Lernfokus <input
-								bind:value={data.recipe.learningFocus}
+			{#if !data.hasActiveRecipe}
+				<main class="empty-cook-board">
+					<span class="empty-mark"><Check size={22} /></span>
+					<p class="eyebrow">KOCHBOARD FREI</p>
+					<h1>Kein Rezept offen.</h1>
+					<p>
+						Sag deinem Koch-Coach, worauf du jetzt Hunger hast. Das nächste Rezept erscheint hier automatisch.
+					</p>
+					<button
+						class="quiet-button"
+						onclick={() => {
+							historyView = 'archive';
+							historyOpen = true;
+						}}><History size={16} /> Archiv & Historie</button
+					>
+				</main>
+			{:else}
+				<main class="cook">
+					<section class="hero">
+						<div class="recipe-meta">
+							<input
+								aria-label="Kochdatum"
+								type="date"
+								bind:value={data.recipe.cookDate}
 								onblur={() => persist(() => repository.saveRecipe(data!.recipe))}
-							/></label
-						>
-						<div class="recipe-actions">
-							<button
-								class="recipe-edit favorite-button"
-								class:active={data.recipe.isFavorite}
-								aria-label={data.recipe.isFavorite ? 'Aus Favoriten entfernen' : 'Als Favorit speichern'}
-								onclick={toggleFavorite}
-								><Heart size={16} fill={data.recipe.isFavorite ? 'currentColor' : 'none'} /> Favorit</button
-							>
-							<button class="recipe-edit" onclick={() => (historyOpen = true)}
-								><History size={15} /> Historie</button
-							>
-							<button
-								class="recipe-edit"
-								aria-label="Rezept bearbeiten"
-								onclick={() => (editingRecipe = clone(data!.recipe))}><Edit3 size={15} /> Bearbeiten</button
+							/><span class="servings"
+								>{data.recipe.servings} {data.recipe.servings === 1 ? 'PORTION' : 'PORTIONEN'}</span
 							>
 						</div>
-					</div>
-				</section>
-				<div class="cook-grid" class:prep-ready={finishedPrep === data.recipe.prepItems.length}>
-					<section class="card prep-card" class:collapsed={prepCollapsed}>
-						<div class="section-title">
-							<ClipboardCheck size={18} />
-							<h2>Mise en Place</h2>
-							<small
-								>{finishedPrep === data.recipe.prepItems.length
-									? 'BEREIT'
-									: `${finishedPrep}/${data.recipe.prepItems.length}`}</small
+						<textarea
+							class="recipe-title"
+							rows="1"
+							aria-label="Gerichtstitel"
+							bind:value={data.recipe.title}
+							onblur={() => persist(() => repository.saveRecipe(data!.recipe))}
+						></textarea>
+						<div class="focus-row">
+							<label class="focus"
+								>Lernfokus <input
+									bind:value={data.recipe.learningFocus}
+									onblur={() => persist(() => repository.saveRecipe(data!.recipe))}
+								/></label
 							>
-							<button
-								class="collapse-button"
-								class:collapsed={prepCollapsed}
-								aria-label={prepCollapsed ? 'Mise en Place ausklappen' : 'Mise en Place einklappen'}
-								onclick={() => (prepCollapsed = !prepCollapsed)}><ChevronDown size={17} /></button
-							>
-						</div>
-						{#if !prepCollapsed}<div class="checklist">
-								{#each data.recipe.prepItems as item}<label class:done={data.session.prepProgress[item.id]}
-										><input
-											type="checkbox"
-											checked={data.session.prepProgress[item.id] ?? false}
-											onchange={() => togglePrep(item.id)}
-										/><span class="check"><Check size={15} /></span><span>{item.text}</span></label
-									>{/each}
-							</div>{/if}
-					</section>
-					<section class="card steps-card">
-						<div class="section-title">
-							<h2>Ablauf</h2>
-							<small>{finishedSteps}/{data.recipe.steps.length} SCHRITTE</small>
-						</div>
-						{#each data.recipe.steps as step, i}<article
-								class="step"
-								class:current={isCurrentStep(i)}
-								class:done={data.session.stepProgress[step.id]}
-							>
+							<div class="recipe-actions">
 								<button
-									class="number"
-									aria-label={`${step.title} ${data.session.stepProgress[step.id] ? 'wieder öffnen' : 'erledigen'}`}
-									onclick={() => toggleStep(step.id)}
-									>{data.session.stepProgress[step.id] ? '✓' : i + 1}</button
+									class="recipe-edit favorite-button"
+									class:active={data.recipe.isFavorite}
+									aria-label={data.recipe.isFavorite ? 'Aus Favoriten entfernen' : 'Als Favorit speichern'}
+									onclick={toggleFavorite}
+									><Heart size={16} fill={data.recipe.isFavorite ? 'currentColor' : 'none'} /> Favorit</button
 								>
-								<div class="step-copy">
+								<button
+									class="recipe-edit"
+									onclick={() => {
+										historyView = 'cooked';
+										historyOpen = true;
+									}}><History size={15} /> Historie</button
+								>
+								<button
+									class="recipe-edit"
+									aria-label="Rezept bearbeiten"
+									onclick={() => (editingRecipe = clone(data!.recipe))}><Edit3 size={15} /> Bearbeiten</button
+								>
+							</div>
+						</div>
+					</section>
+					<div class="cook-grid" class:prep-ready={finishedPrep === data.recipe.prepItems.length}>
+						<section class="card prep-card" class:collapsed={prepCollapsed}>
+							<div class="section-title">
+								<ClipboardCheck size={18} />
+								<h2>Mise en Place</h2>
+								<small
+									>{finishedPrep === data.recipe.prepItems.length
+										? 'BEREIT'
+										: `${finishedPrep}/${data.recipe.prepItems.length}`}</small
+								>
+								<button
+									class="collapse-button"
+									class:collapsed={prepCollapsed}
+									aria-label={prepCollapsed ? 'Mise en Place ausklappen' : 'Mise en Place einklappen'}
+									onclick={() => (prepCollapsed = !prepCollapsed)}><ChevronDown size={17} /></button
+								>
+							</div>
+							{#if !prepCollapsed}<div class="checklist">
+									{#each data.recipe.prepItems as item}<label class:done={data.session.prepProgress[item.id]}
+											><input
+												type="checkbox"
+												checked={data.session.prepProgress[item.id] ?? false}
+												onchange={() => togglePrep(item.id)}
+											/><span class="check"><Check size={15} /></span><span>{item.text}</span></label
+										>{/each}
+								</div>{/if}
+						</section>
+						<section class="card steps-card">
+							<div class="section-title">
+								<h2>Ablauf</h2>
+								<small>{finishedSteps}/{data.recipe.steps.length} SCHRITTE</small>
+							</div>
+							{#each data.recipe.steps as step, i}<article
+									class="step"
+									class:current={isCurrentStep(i)}
+									class:done={data.session.stepProgress[step.id]}
+								>
 									<button
-										class="step-heading"
-										aria-expanded={isExpandedStep(step.id, i)}
-										onclick={() => (expandedStepId = isExpandedStep(step.id, i) ? null : step.id)}
-										><b>{step.title}</b></button
+										class="number"
+										aria-label={`${step.title} ${data.session.stepProgress[step.id] ? 'wieder öffnen' : 'erledigen'}`}
+										onclick={() => toggleStep(step.id)}
+										>{data.session.stepProgress[step.id] ? '✓' : i + 1}</button
 									>
-									<div class="step-facts">
-										{#if step.duration}<span>{step.duration}</span>{/if}
-										{#if step.temperature}<span>{step.temperature}</span>{/if}
-									</div>
-								</div>
-								<button
-									class="expand-button"
-									aria-label={`${step.title} ${isExpandedStep(step.id, i) ? 'einklappen' : 'ausklappen'}`}
-									onclick={() => (expandedStepId = isExpandedStep(step.id, i) ? null : step.id)}
-									><ChevronDown class="step-chevron" size={17} /></button
-								>
-								{#if isExpandedStep(step.id, i)}
-									<div class="instruction">
-										{#each instructionParts(step.instruction) as sentence, sentenceIndex}<span
-												class="coach-line"><i>{sentenceIndex + 1}</i><span>{sentence}</span></span
-											>{/each}
-										{#if step.goal}<span class="step-goal"><b>Ziel</b>{step.goal}</span>{/if}
-										{#if step.science}<aside class="step-science">
-												<b>Warum das funktioniert</b>
-												<span>{step.science}</span>
-											</aside>{/if}
-										<button class="complete-step" onclick={() => toggleStep(step.id)}
-											><Check size={17} />
-											{data.session.stepProgress[step.id] ? 'Wieder öffnen' : 'Schritt erledigt'}</button
+									<div class="step-copy">
+										<button
+											class="step-heading"
+											aria-expanded={isExpandedStep(step.id, i)}
+											onclick={() => (expandedStepId = isExpandedStep(step.id, i) ? null : step.id)}
+											><b>{step.title}</b></button
 										>
+										<div class="step-facts">
+											{#if step.duration}<span>{step.duration}</span>{/if}
+											{#if step.temperature}<span>{step.temperature}</span>{/if}
+										</div>
 									</div>
-								{/if}
-							</article>{/each}
-					</section>
-				</div>
-				<section class="finish-card card">
-					<label for="recipe-note">Notiz für das nächste Mal</label><textarea
-						id="recipe-note"
-						rows="2"
-						placeholder="z. B. nächstes Mal mehr Limette"
-						bind:value={data.note.content}
-					></textarea>
-					<div>
-						<button class="quiet-button" onclick={() => persist(() => repository.saveNote(data!.note))}
-							>Notiz speichern</button
-						><button class="primary" class:completed={!!data.session.completedAt} onclick={finishCooking}
-							>{data.session.completedAt ? 'Gekocht · gespeichert' : 'Kochen abschließen'}
-							<Check size={17} /></button
-						>
+									<button
+										class="expand-button"
+										aria-label={`${step.title} ${isExpandedStep(step.id, i) ? 'einklappen' : 'ausklappen'}`}
+										onclick={() => (expandedStepId = isExpandedStep(step.id, i) ? null : step.id)}
+										><ChevronDown class="step-chevron" size={17} /></button
+									>
+									{#if isExpandedStep(step.id, i)}
+										<div class="instruction">
+											{#each instructionParts(step.instruction) as sentence, sentenceIndex}<span
+													class="coach-line"><i>{sentenceIndex + 1}</i><span>{sentence}</span></span
+												>{/each}
+											{#if step.goal}<span class="step-goal"><b>Ziel</b>{step.goal}</span>{/if}
+											{#if step.science}<aside class="step-science">
+													<b>Warum das funktioniert</b>
+													<span>{step.science}</span>
+												</aside>{/if}
+											<button class="complete-step" onclick={() => toggleStep(step.id)}
+												><Check size={17} />
+												{data.session.stepProgress[step.id] ? 'Wieder öffnen' : 'Schritt erledigt'}</button
+											>
+										</div>
+									{/if}
+								</article>{/each}
+						</section>
 					</div>
-				</section>
-			</main>
+					<section class="finish-card card">
+						<label for="recipe-note">Notiz für das nächste Mal</label><textarea
+							id="recipe-note"
+							rows="2"
+							placeholder="z. B. nächstes Mal mehr Limette"
+							bind:value={data.note.content}
+						></textarea>
+						<div>
+							<button class="danger" onclick={() => void archiveCurrentRecipe()}>Rezept abbrechen</button>
+							<button class="quiet-button" onclick={() => persist(() => repository.saveNote(data!.note))}
+								>Notiz speichern</button
+							><button class="primary" class:completed={!!data.session.completedAt} onclick={finishCooking}
+								>{data.session.completedAt ? 'Gekocht · gespeichert' : 'Kochen abschließen'}
+								<Check size={17} /></button
+							>
+						</div>
+					</section>
+				</main>
+			{/if}
 		{:else}
 			<main class="shopping">
 				<section class="shopping-hero">
@@ -1058,23 +1112,62 @@
 					onclick={() => (historyOpen = false)}><X size={19} /></button
 				>
 			</div>
+			<div class="segmented history-switch">
+				<button class:active={historyView === 'cooked'} onclick={() => (historyView = 'cooked')}
+					>Gekocht <span>{data.recipeHistory.length}</span></button
+				>
+				<button class:active={historyView === 'archive'} onclick={() => (historyView = 'archive')}
+					>Archiv <span>{data.recipeArchive.length}</span></button
+				>
+			</div>
 			<div class="history-list">
-				{#each data.recipeHistory as recipe}
-					<button
-						class:active={recipe.id === data.recipe.id}
-						onclick={() => void openHistoryRecipe(recipe.id)}
-					>
-						<span class="history-date">{shortDate(recipe.cookDate)}</span>
-						<span class="history-copy"
-							><b
-								>{#if recipe.isFavorite}<Heart size={12} fill="currentColor" />{/if}{recipe.title}</b
-							><small>{recipe.learningFocus || 'Ohne Lernfokus'}</small></span
-						>
-						<span class="history-state"
-							>{recipe.id === data.recipe.id ? 'AKTUELL' : recipe.completedAt ? 'GEKOCHT' : 'OFFEN'}</span
-						>
-					</button>
+				{#if visibleHistory.length === 0}<p class="history-empty">
+						{historyView === 'cooked' ? 'Noch kein Gericht abgeschlossen.' : 'Das Archiv ist leer.'}
+					</p>{/if}
+				{#each visibleHistory as recipe}
+					<article>
+						<div class="history-main">
+							<span class="history-date">{shortDate(recipe.cookDate)}</span>
+							<span class="history-copy"
+								><b
+									>{#if recipe.isFavorite}<Heart size={12} fill="currentColor" />{/if}{recipe.title}</b
+								><small>{recipe.learningFocus || 'Ohne Lernfokus'}</small></span
+							>
+							<span class="history-state">{historyView === 'cooked' ? 'GEKOCHT' : 'NICHT GEKOCHT'}</span>
+						</div>
+						{#if historyView === 'archive'}<button
+								class="archive-complete"
+								onclick={() => (archiveCompletion = recipe)}>Doch gekocht</button
+							>{/if}
+					</article>
 				{/each}
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if archiveCompletion && data}
+	<div
+		class="overlay modal-overlay confirm-layer"
+		role="presentation"
+		onclick={(event) => event.target === event.currentTarget && (archiveCompletion = null)}
+	>
+		<div
+			class="modal archive-confirm"
+			role="alertdialog"
+			aria-modal="true"
+			aria-labelledby="archive-confirm-title"
+		>
+			<p class="eyebrow">VORRAT AKTUALISIEREN</p>
+			<h2 id="archive-confirm-title">„{archiveCompletion.title}“ wirklich gekocht?</h2>
+			<p>
+				Jeff zieht jetzt die hinterlegten Hauptzutaten einmalig ab und verschiebt das Rezept in „Gekocht“.
+			</p>
+			<div class="modal-actions">
+				<button class="quiet-button" onclick={() => (archiveCompletion = null)}>Abbrechen</button><button
+					class="primary"
+					onclick={() => void confirmArchivedCompletion()}>Ja, wurde gekocht</button
+				>
 			</div>
 		</div>
 	</div>
@@ -2220,24 +2313,54 @@
 		display: grid;
 		gap: 7px;
 	}
-	.history-list > button {
+	.history-switch {
+		margin: 0 0 14px;
+	}
+	.history-switch button span {
+		margin-left: 5px;
+		color: var(--quiet);
+	}
+	.history-list > article {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: stretch;
+		border: 1px solid var(--line);
+		border-radius: 13px;
+		overflow: hidden;
+	}
+	.history-main {
 		min-height: 68px;
 		display: grid;
 		grid-template-columns: 95px minmax(0, 1fr) auto;
 		align-items: center;
 		gap: 14px;
 		padding: 10px 13px;
-		border: 1px solid var(--line);
-		border-radius: 13px;
+		border: 0;
 		background: transparent;
 		color: var(--muted);
 		text-align: left;
+	}
+	.archive-complete {
+		padding: 0 14px;
+		border: 0;
+		border-left: 1px solid var(--line);
+		background: transparent;
+		color: var(--accent);
+		font-size: 10px;
+		font-weight: 600;
 		cursor: pointer;
 	}
-	.history-list > button:hover,
-	.history-list > button.active {
+	.archive-complete:hover {
 		background: var(--surface-2);
-		border-color: var(--line-strong);
+	}
+	.history-empty {
+		margin: 0;
+		padding: 30px 12px;
+		border: 1px dashed var(--line);
+		border-radius: 13px;
+		color: var(--quiet);
+		font-size: 11px;
+		text-align: center;
 	}
 	.history-date,
 	.history-state {
@@ -2319,6 +2442,46 @@
 		font-size: 10px;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	.empty-cook-board {
+		min-height: calc(100vh - 180px);
+		display: grid;
+		place-content: center;
+		justify-items: center;
+		padding: 70px 20px;
+		text-align: center;
+	}
+	.empty-mark {
+		width: 48px;
+		height: 48px;
+		display: grid;
+		place-items: center;
+		margin-bottom: 20px;
+		border: 1px solid var(--line-strong);
+		border-radius: 15px;
+		color: var(--accent);
+		background: var(--surface);
+	}
+	.empty-cook-board h1 {
+		margin: 0;
+		font-size: clamp(38px, 7vw, 64px);
+		letter-spacing: -0.055em;
+		font-weight: 540;
+	}
+	.empty-cook-board > p:not(.eyebrow) {
+		max-width: 42ch;
+		margin: 14px 0 24px;
+		color: var(--muted);
+		font-size: 13px;
+		line-height: 1.6;
+	}
+	.confirm-layer {
+		z-index: 40;
+	}
+	.archive-confirm p:not(.eyebrow) {
+		color: var(--muted);
+		font-size: 12px;
+		line-height: 1.6;
 	}
 	.form-grid.three {
 		grid-template-columns: 0.65fr 1fr 1.5fr;
@@ -2412,7 +2575,7 @@
 			grid-column: 2;
 			justify-content: flex-end;
 		}
-		.history-list > button {
+		.history-main {
 			grid-template-columns: minmax(0, 1fr) auto;
 		}
 		.history-date {

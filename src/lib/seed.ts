@@ -130,6 +130,7 @@ export function createSeedData(): AppData {
 			servings: 1,
 			learningFocus: 'Pfannenglasur und schnelle Säure',
 			isFavorite: false,
+			status: 'active',
 			prepItems: prep,
 			steps,
 			consumptions
@@ -174,15 +175,8 @@ export function createSeedData(): AppData {
 			})
 		),
 		inventory,
-		recipeHistory: [
-			{
-				id: recipeId,
-				title: 'Ginger-Beef-Rice-Bowl',
-				cookDate: new Date().toISOString().slice(0, 10),
-				learningFocus: 'Pfannenglasur und schnelle Säure',
-				completedAt: null,
-				isFavorite: false
-			}
-		]
+		recipeHistory: [],
+		recipeArchive: [],
+		hasActiveRecipe: true
 	};
 }
