@@ -248,6 +248,7 @@ begin
         set quantity = greatest(0, coalesce(quantity, 0) - usage.quantity),
             status = case when greatest(0, coalesce(quantity, 0) - usage.quantity) = 0 then 'leer' else 'vorhanden' end
         where id = existing_id;
+      delete from public.inventory_items where id = existing_id and keep_when_empty = false and quantity = 0;
     end if;
   end loop;
 
