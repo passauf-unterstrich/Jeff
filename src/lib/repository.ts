@@ -401,7 +401,8 @@ export class SupabaseRepository implements Repository {
 				location: r.location,
 				status: r.status,
 				bestBefore: r.best_before ?? '',
-				note: r.note ?? ''
+				note: r.note ?? '',
+				keepWhenEmpty: r.keep_when_empty ?? false
 			})),
 			recipeHistory: (historyRows.data ?? [])
 				.filter((row) => row.status === 'completed')
@@ -555,8 +556,9 @@ export class SupabaseRepository implements Repository {
 						unit: x.unit || null,
 						location: x.location,
 						status: x.status,
-						best_before: x.bestBefore || null,
-						note: x.note || null
+					best_before: x.bestBefore || null,
+					note: x.note || null,
+					keep_when_empty: x.keepWhenEmpty ?? false
 					}))
 				)
 			).error
@@ -745,7 +747,8 @@ export class SupabaseRepository implements Repository {
 					location: v.location,
 					status: v.status,
 					best_before: v.bestBefore || null,
-					note: v.note || null
+					note: v.note || null,
+					keep_when_empty: v.keepWhenEmpty ?? false
 				})
 			).error
 		);

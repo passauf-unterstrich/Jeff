@@ -44,6 +44,7 @@ create table if not exists public.recipes (
 );
 
 alter table public.shopping_lists add column if not exists completed_at timestamptz;
+alter table public.inventory_items add column if not exists keep_when_empty boolean not null default false;
 alter table public.shopping_items add column if not exists added_to_inventory boolean not null default false;
 alter table public.shopping_items add column if not exists inventory_tracking_type text not null default 'exact' check (inventory_tracking_type in ('exact','basic'));
 alter table public.shopping_items add column if not exists inventory_quantity numeric check (inventory_quantity is null or inventory_quantity >= 0);

@@ -16,7 +16,8 @@
 		Search,
 		ShoppingBasket,
 		Trash2,
-		X
+		X,
+		Star
 	} from 'lucide-svelte';
 	import { DemoRepository, SupabaseRepository, type Repository } from '$lib/repository';
 	import { getSupabase, supabaseConfigured } from '$lib/supabase';
@@ -44,6 +45,9 @@
 	let editingShopping = $state<ShoppingItem | null>(null);
 	let quickShoppingText = $state('');
 	let summaryOpen = $state(false);
+	let leftoverOpen = $state(false);
+	let leftoverMode = $state<'none' | 'portion' | 'components'>('none');
+	let leftoverComponents = $state('');
 	let expandedStepId = $state<string | null>(null);
 	let prepCollapsed = $state(false);
 	let editingRecipe = $state<Recipe | null>(null);
@@ -209,11 +213,28 @@
 			summaryOpen = true;
 			return;
 		}
+		leftoverMode = 'none';
+		leftoverComponents = '';
+		leftoverOpen = true;
+	}
+	async function confirmFinishCooking() {
+		if (!data) return;
 		await persist(async () => {
 			await repository.saveNote(data!.note);
 			await repository.completeCooking(data!.session.id);
+			if (leftoverMode !== 'none') {
+				const leftoverName = leftoverMode === 'portion' ? `${data!.recipe.title} · Rest` : leftoverComponents.trim();
+				if (leftoverName) {
+					await repository.saveInventoryItem({
+						id: crypto.randomUUID(), name: leftoverName, trackingType: 'exact', quantity: 1,
+						unit: leftoverMode === 'portion' ? 'Portion' : 'Behälter', location: 'Kühlschrank',
+						status: 'vorhanden', bestBefore: '', note: 'Gekochter Rest', keepWhenEmpty: false
+					});
+				}
+			}
 			data = await repository.load(data!.recipe.id);
 		});
+		leftoverOpen = false;
 		summaryOpen = true;
 	}
 	async function archiveCurrentRecipe() {
@@ -429,6 +450,10 @@
 		item.status = item.status === 'vorhanden' ? 'wenig' : item.status === 'wenig' ? 'leer' : 'vorhanden';
 		void persist(() => repository.saveInventoryItem(item));
 		if (item.status === 'leer') addInventoryToShopping(item);
+	}
+	function toggleInventoryKeep(item: InventoryItem) {
+		item.keepWhenEmpty = !item.keepWhenEmpty;
+		void persist(() => repository.saveInventoryItem(item));
 	}
 	function addInventoryToShopping(item: InventoryItem) {
 		if (!data) return;
@@ -861,7 +886,7 @@
 								class:low={item.status === 'wenig'}
 								class:empty={item.status === 'leer'}
 								onclick={() => cycleStatus(item)}>{item.status}</button
-							>{/if}<button
+							>{/if}<button class="star-button" class:active={item.keepWhenEmpty} aria-label={item.keepWhenEmpty ? `${item.name} nicht mehr merken` : `${item.name} bei leer behalten`} onclick={() => toggleInventoryKeep(item)}><Star size={16} fill={item.keepWhenEmpty ? 'currentColor' : 'none'} /></button><button
 							class="basket-button"
 							aria-label={`${item.name} auf Einkaufsliste`}
 							onclick={() => addInventoryToShopping(item)}><ShoppingBasket size={17} /></button
@@ -1220,6 +1245,21 @@
 		</div>
 	</div>
 {/if}
+
+{#if leftoverOpen && data}<div class="overlay modal-overlay" role="presentation" onclick={(event) => event.target === event.currentTarget && (leftoverOpen = false)}>
+	<div class="modal leftover-modal" role="dialog" aria-modal="true" aria-labelledby="leftover-title">
+		<p class="eyebrow">NOCH ETWAS ÜBRIG?</p>
+		<h2 id="leftover-title">Was soll in den Vorrat?</h2>
+		<p class="modal-copy">Jeff zieht die Hauptzutaten ab und merkt sich den Rest für dein nächstes Mittagessen.</p>
+		<div class="leftover-options">
+			<button class:active={leftoverMode === 'none'} onclick={() => (leftoverMode = 'none')}>Nichts übrig</button>
+			<button class:active={leftoverMode === 'portion'} onclick={() => (leftoverMode = 'portion')}>Ganze Portion</button>
+			<button class:active={leftoverMode === 'components'} onclick={() => (leftoverMode = 'components')}>Einzelne Bestandteile</button>
+		</div>
+		{#if leftoverMode === 'components'}<input class="leftover-input" bind:value={leftoverComponents} placeholder="z. B. Reis und Gyoza · 1 Behälter" />{/if}
+		<div class="modal-actions"><button class="quiet-button" onclick={() => (leftoverOpen = false)}>Zurück</button><button class="primary" disabled={leftoverMode === 'components' && !leftoverComponents.trim()} onclick={() => void confirmFinishCooking()}>Abschluss speichern <Check size={16} /></button></div>
+	</div>
+</div>{/if}
 
 {#if summaryOpen && data}<div
 		class="overlay modal-overlay"
@@ -2087,7 +2127,7 @@
 	}
 	.inventory-row {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto 38px;
+		grid-template-columns: minmax(0, 1fr) auto 34px 38px;
 		gap: 9px;
 		align-items: center;
 		min-height: 72px;
@@ -2181,6 +2221,19 @@
 		color: var(--quiet);
 		cursor: pointer;
 	}
+	.star-button {
+		width: 34px;
+		height: 40px;
+		display: grid;
+		place-items: center;
+		border: 0;
+		background: transparent;
+		color: var(--quiet);
+		cursor: pointer;
+	}
+	.star-button.active {
+		color: var(--accent);
+	}
 	.basket-button:hover {
 		background: var(--surface-2);
 		color: var(--text);
@@ -2205,6 +2258,40 @@
 		border-radius: 22px;
 		padding: 23px;
 		box-shadow: 0 30px 120px rgba(0, 0, 0, 0.55);
+	}
+	.leftover-modal h2 {
+		margin: 6px 0 8px;
+		font-size: 25px;
+	}
+	.modal-copy {
+		color: var(--muted);
+		font-size: 13px;
+		line-height: 1.5;
+	}
+	.leftover-options {
+		display: grid;
+		gap: 8px;
+		margin: 20px 0 12px;
+	}
+	.leftover-options button {
+		padding: 13px 14px;
+		border: 1px solid var(--line);
+		border-radius: 11px;
+		background: var(--surface-2);
+		color: var(--muted);
+		text-align: left;
+		cursor: pointer;
+	}
+	.leftover-options button.active {
+		border-color: rgba(225, 233, 219, 0.35);
+		background: rgba(225, 233, 219, 0.08);
+		color: var(--text);
+	}
+	.leftover-input {
+		width: 100%;
+		min-height: 46px;
+		padding: 0 13px;
+		margin-bottom: 12px;
 	}
 	.modal-head {
 		margin-bottom: 22px;
@@ -2730,7 +2817,7 @@
 			font-size: 38px;
 		}
 		.inventory-row {
-			grid-template-columns: minmax(0, 1fr) 36px;
+			grid-template-columns: minmax(0, 1fr) 34px 36px;
 			min-height: 0;
 			padding: 11px 0;
 			row-gap: 8px;
@@ -2741,6 +2828,10 @@
 			width: fit-content;
 		}
 		.basket-button {
+			grid-column: 3;
+			grid-row: 1/3;
+		}
+		.star-button {
 			grid-column: 2;
 			grid-row: 1/3;
 		}

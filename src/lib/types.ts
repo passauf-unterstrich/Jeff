@@ -99,6 +99,7 @@ export type InventoryItem = {
 	status: BasicStatus;
 	bestBefore: string;
 	note: string;
+	keepWhenEmpty?: boolean;
 };
 export type AppData = {
 	recipe: Recipe;
