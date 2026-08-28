@@ -293,14 +293,33 @@ export class SupabaseRepository implements Repository {
 		])
 			check(result.error);
 		const listRow = lists.data![0];
+		if (!listRow) throw new Error('Keine Einkaufsliste gefunden.');
 		const shopping = await this.client
 			.from('shopping_items')
 			.select('*')
 			.eq('list_id', listRow.id)
 			.order('position');
 		check(shopping.error);
-		const sessionRow = sessions.data![0];
-		const noteRow = notes.data![0];
+		let sessionRow = sessions.data![0];
+		if (!sessionRow) {
+			const created = await this.client
+				.from('cooking_sessions')
+				.insert({ user_id: this.userId, recipe_id: recipeRow.id, prep_progress: {}, step_progress: {} })
+				.select('*')
+				.single();
+			check(created.error);
+			sessionRow = created.data;
+		}
+		let noteRow = notes.data![0];
+		if (!noteRow) {
+			const created = await this.client
+				.from('recipe_notes')
+				.insert({ user_id: this.userId, recipe_id: recipeRow.id, content: '' })
+				.select('*')
+				.single();
+			check(created.error);
+			noteRow = created.data;
+		}
 		const completionByRecipe = new Map<string, string | null>();
 		for (const session of historySessions.data ?? []) {
 			if (!completionByRecipe.has(session.recipe_id))
