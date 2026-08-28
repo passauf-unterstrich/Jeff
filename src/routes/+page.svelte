@@ -1432,11 +1432,15 @@
 	.recipe-title {
 		display: block;
 		width: 100%;
+		max-width: 100%;
 		height: auto;
 		min-height: 1.08em;
-		max-height: 2.08em;
+		max-height: none;
 		field-sizing: content;
 		overflow: hidden;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+		white-space: pre-wrap;
 		resize: none;
 		border: 0;
 		background: transparent;
